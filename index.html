@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alien Guessr</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="app">
+    <section id="screen-start" class="screen start-screen">
+      <div class="mascots" aria-hidden="true">
+        <div class="mascot pink"><span></span><span></span></div>
+        <div class="mascot blue"><span></span><span></span></div>
+      </div>
+      <p class="eyebrow">A new planet every match</p>
+      <h1>Alien Guessr</h1>
+      <p class="lede">Learn the planet's rules, then guess where you are.</p>
+      <p class="quiet">One still picture. No moving, no zooming. The map stays on the right. Hover it to enlarge, then drop a pin.</p>
+      <p id="diff-hint" class="quiet">Six big regions. The sky, the aliens, and the horizon give it away.</p>
+
+      <div class="difficulty" role="group" aria-label="Difficulty">
+        <button type="button" class="diff is-selected" data-difficulty="easy">Easy</button>
+        <button type="button" class="diff" data-difficulty="medium">Medium</button>
+        <button type="button" class="diff" data-difficulty="hard">Hard</button>
+      </div>
+
+      <label class="seed-field">
+        <span>Seed</span>
+        <input id="seed-input" type="text" autocomplete="off" spellcheck="false" placeholder="Empty = new planet">
+      </label>
+
+      <div class="action-row">
+        <button type="button" id="play-btn" class="primary">Play</button>
+        <button type="button" id="study-btn" class="secondary">Study</button>
+      </div>
+    </section>
+
+    <section id="screen-play" class="screen play-screen" hidden>
+      <div class="play-layout" id="play-layout">
+        <div class="play-main">
+          <header class="hud">
+            <div>
+              <p class="eyebrow" id="mode-label">Match</p>
+              <h1 id="round-label">Round 1/5</h1>
+              <p class="seed-line">Seed <strong id="seed-label"></strong>
+                <button type="button" id="copy-seed" class="text-btn">Copy</button>
+              </p>
+            </div>
+            <div class="score-block">
+              <span id="difficulty-pill" class="pill">Easy</span>
+              <strong id="score-label">0</strong>
+              <small>points</small>
+            </div>
+          </header>
+
+          <div class="stage">
+            <canvas id="photo" width="1280" height="720" aria-label="Alien landscape"></canvas>
+          </div>
+
+          <div id="clue-panel" class="clue-panel" hidden>
+            <h2>Region clues</h2>
+            <div id="clue-list" class="clue-list"></div>
+          </div>
+
+          <div class="action-row play-actions">
+            <button type="button" id="back-btn" class="text-btn">Back</button>
+            <p class="quiet keys">Hover the map to enlarge it. Enter locks the pin.</p>
+          </div>
+        </div>
+
+        <aside class="map-dock" id="map-dock">
+          <p class="map-kicker">Planet</p>
+          <p id="map-hint" class="map-hint">Click the map to place your pin.</p>
+          <div class="map-frame">
+            <canvas id="map" width="800" height="800" aria-label="Planet map"></canvas>
+          </div>
+          <div id="map-bar" class="map-bar">
+            <button type="button" id="confirm-btn" class="primary" disabled>Lock in guess</button>
+          </div>
+          <div id="result-banner" class="result-banner" hidden>
+            <p id="round-points"></p>
+            <p id="distance-label"></p>
+            <button type="button" id="next-btn" class="primary">Next round</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="screen-results" class="screen results-screen" hidden>
+      <p class="eyebrow">Planet complete</p>
+      <h1 id="results-score">0</h1>
+      <p class="quiet">out of 25,000</p>
+      <p class="quiet">Same planet. Play it again, or study it until the places stick.</p>
+      <ol id="results-list"></ol>
+      <p class="seed-line">Seed <strong id="results-seed"></strong></p>
+      <div class="action-row">
+        <button type="button" id="again-btn" class="primary">Play this planet again</button>
+        <button type="button" id="results-study" class="secondary">Study this planet</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/rng.js"></script>
+  <script src="js/glyphs.js"></script>
+  <script src="js/score.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
