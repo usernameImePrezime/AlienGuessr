@@ -1,6 +1,6 @@
 (function (G) {
   const COUNTS = { easy: 6, medium: 12, hard: 20 };
-  const VEGETATION = ["crystal", "mushroom", "coral", "spike"];
+  const VEGETATION = ["mushroom", "palm", "tentacle", "crystal", "eyestalk", "bulb", "spiralfern", "balloon"];
   const ALIENS = ["blue", "pink", "mixed"];
   const HEIGHTS = ["short", "medium", "tall"];
   const ROOFS = ["dome", "spike", "flat", "arch"];
@@ -12,12 +12,16 @@
   const STAR_PATTERNS = ["cross", "arc", "cluster", "ring", "scatter"];
   const GROUND_PATTERNS = ["plain", "cracked", "rippled", "hex"];
   const PATH_STYLES = ["dirt", "plates", "glow", "rails"];
-  const TRAITS = ["plain", "horns", "antenna", "spots", "crest"];
-  const EYE_COUNTS = [1, 2, 3];
   const BANNERS = ["flags", "lanterns", "ribbons", "none"];
   const WINDOWS = ["slit", "round", "grid", "arch"];
   const WEATHERS = ["clear", "mist", "dust", "spores"];
   const FENCES = ["posts", "chain", "wall", "none"];
+  const BODIES = ["A", "B", "C", "D", "E", "F"];
+  const EYES = ["cute_light", "human", "psycho_light", "yellow", "red", "blue", "angry_blue", "human_green", "cute_dark"];
+  const EYE_COUNTS = [1, 2, 3];
+  const DETAILS = ["antenna_large", "antenna_small", "ear", "ear_round", "horn_large", "horn_small", "none"];
+  const MOUTHS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "closed_fangs", "closed_happy", "closed_teeth"];
+  const LIMBS = ["A", "B", "C", "D", "E"];
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -52,20 +56,27 @@
     return evenBag(rand, count, family);
   }
 
-  function scatterSites(rand, count) {
-    let minDist = count <= 6 ? 210 : count <= 12 ? 125 : 72;
-    for (let attempt = 0; attempt < 6; attempt++) {
+  function goodSite(terrain, x, y) {
+    if (!G.isDryLand(terrain, x, y)) return false;
+    const e = G.elevationAt(terrain, x, y);
+    return e > 0.03 && e < 0.7;
+  }
+
+  function scatterSites(rand, count, terrain) {
+    let minDist = count <= 6 ? 200 : count <= 12 ? 125 : 78;
+    for (let attempt = 0; attempt < 7; attempt++) {
       const sites = [];
       let guard = 0;
-      while (sites.length < count && guard < 5000) {
+      while (sites.length < count && guard < 6000) {
         guard += 1;
-        const x = 90 + rand() * 820;
-        const y = 90 + rand() * 820;
+        const x = 40 + rand() * 920;
+        const y = 40 + rand() * 920;
+        if (terrain && !goodSite(terrain, x, y)) continue;
         const clear = sites.every((site) => Math.hypot(site.x - x, site.y - y) >= minDist);
         if (clear) sites.push({ x, y });
       }
       if (sites.length === count) return sites;
-      minDist *= 0.82;
+      minDist *= 0.8;
     }
     return null;
   }
@@ -150,16 +161,6 @@
     return cleanPoly(poly);
   }
 
-  function shoelace(poly) {
-    let sum = 0;
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i];
-      const b = poly[(i + 1) % poly.length];
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(sum) / 2;
-  }
-
   function nearestIndex(sites, index) {
     let best = index === 0 ? 1 : 0;
     let bestDist = Infinity;
@@ -186,11 +187,9 @@
 
   function buildProfiles(rand, count, difficulty) {
     const skyHues = hues(rand, count, difficulty);
-    const alienBag = difficulty === "easy"
-      ? evenBag(rand, count, ["blue", "pink", "mixed"])
-      : difficulty === "medium"
-        ? evenBag(rand, count, ALIENS)
-        : evenBag(rand, count, ["blue", "pink"]);
+    const alienBag = difficulty === "hard"
+      ? evenBag(rand, count, ["blue", "pink"])
+      : evenBag(rand, count, ALIENS);
     const vegetationBag = evenBag(rand, count, VEGETATION);
     const heightBag = evenBag(rand, count, HEIGHTS);
     const roofBag = evenBag(rand, count, ROOFS);
@@ -203,78 +202,83 @@
     const starBag = evenBag(rand, count, STAR_PATTERNS);
     const patternBag = evenBag(rand, count, GROUND_PATTERNS);
     const pathBag = evenBag(rand, count, PATH_STYLES);
-    const traitBag = evenBag(rand, count, TRAITS);
-    const eyeBag = evenBag(rand, count, EYE_COUNTS);
     const bannerBag = evenBag(rand, count, BANNERS);
     const windowBag = evenBag(rand, count, WINDOWS);
     const weatherBag = difficulty === "hard"
       ? evenBag(rand, count, ["clear", "mist"])
       : evenBag(rand, count, WEATHERS);
     const fenceBag = evenBag(rand, count, FENCES);
+    const bodyBag = evenBag(rand, count, BODIES);
+    const eyeBag = evenBag(rand, count, EYES);
+    const eyeCountBag = evenBag(rand, count, EYE_COUNTS);
+    const detailBag = evenBag(rand, count, DETAILS);
+    const mouthBag = evenBag(rand, count, MOUTHS);
+    const armBag = evenBag(rand, count, LIMBS);
+    const legBag = evenBag(rand, count, LIMBS);
     const accentBase = rand() * 360;
     const lineBase = rand() * 360;
+    const moonBase = rand() * 360;
 
-    const profiles = skyHues.map((skyHue, index) => {
-      const sat = difficulty === "easy" ? 78 : difficulty === "medium" ? 64 : 46;
-      const skyLight = difficulty === "hard" ? 42 : 54;
-      const sky = { h: skyHue, s: sat, l: skyLight };
-      const skyDeep = { h: skyHue, s: sat, l: difficulty === "easy" ? 18 : 24 };
-      const groundHue = difficulty === "easy" ? skyHue : (skyHue + 40 + (index % 3) * 18) % 360;
-      const ground = { h: groundHue, s: difficulty === "easy" ? 42 : 34, l: difficulty === "easy" ? 32 : 28 };
+    return skyHues.map((skyHue, index) => {
+      const sat = difficulty === "easy" ? 70 : difficulty === "medium" ? 60 : 48;
+      const sky = { h: skyHue, s: sat, l: 78 };
+      const skyDeep = { h: (skyHue + 40) % 360, s: sat, l: 66 };
+      const groundHue = difficulty === "easy" ? (skyHue + 150) % 360 : (skyHue + 120 + (index % 3) * 24) % 360;
       const lineHue = difficulty === "easy"
         ? (skyHue + 180) % 360
         : (lineBase + glyphBag[index] * 29) % 360;
       return {
         skyGradient: [skyDeep, sky],
-        groundColor: ground,
-        pathColor: { h: groundHue, s: 18, l: 46 },
+        groundColor: { h: groundHue, s: 46, l: 52 },
+        pathColor: { h: 32, s: 38, l: 62 },
         pathLineColor: { h: lineHue, s: difficulty === "hard" ? 70 : 84, l: 62 },
         vegetation: vegetationBag[index],
         vegetationColor: {
           h: difficulty === "easy" ? (skyHue + 28) % 360 : (accentBase + index * 47) % 360,
-          s: 72,
-          l: 58,
+          s: 68,
+          l: 62,
         },
         alienMix: alienBag[index],
         alienHeight: heightBag[index],
+        alienSpecies: {
+          body: bodyBag[index],
+          eye: eyeBag[index],
+          eyes: eyeCountBag[index],
+          detail: detailBag[index],
+          mouth: mouthBag[index],
+          arm: armBag[index],
+          leg: legBag[index],
+        },
         roofShape: roofBag[index],
-        roofColor: { h: (skyHue + (difficulty === "easy" ? 12 : 160)) % 360, s: 68, l: 48 },
-        poleColor: { h: (lineBase + index * 19) % 360, s: 30, l: difficulty === "hard" ? 72 : 84 },
+        roofColor: { h: (skyHue + (difficulty === "easy" ? 12 : 160)) % 360, s: 64, l: 58 },
+        wallColor: { h: (accentBase + index * 61 + 90) % 360, s: 52, l: 72 },
+        poleColor: { h: (lineBase + index * 19) % 360, s: 30, l: difficulty === "hard" ? 64 : 74 },
         poleTop: poleBag[index],
         signShape: signBag[index],
         signGlyph: glyphBag[index] % G.GLYPH_COUNT,
         drivingSide: sideBag[index],
-        accentColor: { h: (accentBase + index * (360 / count)) % 360, s: 80, l: 56 },
-        mapColor: { h: (index * 137.508 + accentBase) % 360, s: 58, l: 56 },
+        accentColor: { h: (accentBase + index * (360 / count)) % 360, s: 80, l: 60 },
+        moonColor: { h: (moonBase + index * 53) % 360, s: 60, l: 84 },
         terrain: terrainBag[index],
         skyEvent: eventBag[index],
         starPattern: starBag[index],
         groundPattern: patternBag[index],
         pathStyle: pathBag[index],
-        alienTrait: traitBag[index],
-        eyeCount: eyeBag[index],
         banner: bannerBag[index],
         windowStyle: windowBag[index],
         weather: weatherBag[index],
         fence: fenceBag[index],
       };
     });
-
-    return profiles;
   }
 
-  function tryGenerate(seed, difficulty, forceGrid) {
+  function tryGenerate(seed, difficulty, terrain, forceGrid) {
     const count = COUNTS[difficulty];
     const rand = G.mulberry32(G.hashSeed(`${seed}|${difficulty}|world`));
-    const sites = forceGrid ? gridSites(count, rand) : scatterSites(rand, count);
+    const sites = forceGrid ? gridSites(count, rand) : scatterSites(rand, count, terrain);
     if (!sites) return null;
-    const regions = [];
-    for (let i = 0; i < sites.length; i++) {
-      const polygon = voronoiCell(sites[i], sites);
-      const minArea = count >= 16 ? 3200 : 7000;
-      if (polygon.length < 3 || shoelace(polygon) < minArea) return null;
-      regions.push({ id: i, site: sites[i], polygon });
-    }
+    const regions = sites.map((site, i) => ({ id: i, site, polygon: voronoiCell(site, sites) }));
+    if (regions.some((region) => region.polygon.length < 3)) return null;
     const profiles = buildProfiles(rand, count, difficulty);
     regions.forEach((region, index) => {
       region.profile = profiles[index];
@@ -290,293 +294,87 @@
         signGlyph: region.profile.signGlyph,
         lineHue: region.profile.pathLineColor.h,
         starPattern: region.profile.starPattern,
-        alienTrait: region.profile.alienTrait,
         pathStyle: region.profile.pathStyle,
         windowStyle: region.profile.windowStyle,
         fence: region.profile.fence,
-        eyeCount: region.profile.eyeCount,
+        species: { ...region.profile.alienSpecies },
       }));
       regions.forEach((region) => {
         const profile = region.profile;
         const neighbor = snapshot[nearestIndex(sites, region.id)];
+        const species = profile.alienSpecies;
         if (rand() < 0.8) profile.skyGradient = neighbor.sky.map((color) => ({ ...color }));
         if (rand() < 0.7) profile.alienMix = neighbor.alien;
         if (rand() < 0.55) profile.terrain = neighbor.terrain;
         if (rand() < 0.5) profile.weather = neighbor.weather;
+        if (rand() < 0.5) species.mouth = neighbor.species.mouth;
         if (profile.poleTop === neighbor.poleTop) profile.poleTop = different(rand, profile.poleTop, POLE_TOPS);
         if (profile.signShape === neighbor.signShape) profile.signShape = different(rand, profile.signShape, SIGN_SHAPES);
         if (profile.signGlyph === neighbor.signGlyph) {
           profile.signGlyph = (profile.signGlyph + 1 + Math.floor(rand() * (G.GLYPH_COUNT - 1))) % G.GLYPH_COUNT;
         }
         if (profile.starPattern === neighbor.starPattern) profile.starPattern = different(rand, profile.starPattern, STAR_PATTERNS);
-        if (profile.alienTrait === neighbor.alienTrait) profile.alienTrait = different(rand, profile.alienTrait, TRAITS);
         if (profile.pathStyle === neighbor.pathStyle) profile.pathStyle = different(rand, profile.pathStyle, PATH_STYLES);
         if (profile.windowStyle === neighbor.windowStyle) profile.windowStyle = different(rand, profile.windowStyle, WINDOWS);
         if (profile.fence === neighbor.fence) profile.fence = different(rand, profile.fence, FENCES);
-        if (profile.eyeCount === neighbor.eyeCount) profile.eyeCount = different(rand, profile.eyeCount, EYE_COUNTS);
+        if (species.body === neighbor.species.body) species.body = different(rand, species.body, BODIES);
+        if (species.detail === neighbor.species.detail) species.detail = different(rand, species.detail, DETAILS);
+        if (species.eyes === neighbor.species.eyes) species.eyes = different(rand, species.eyes, EYE_COUNTS);
         if (hueDistance(profile.pathLineColor.h, neighbor.lineHue) < 28) {
-          profile.pathLineColor = {
-            h: (profile.pathLineColor.h + 55) % 360,
-            s: 74,
-            l: 62,
-          };
+          profile.pathLineColor = { h: (profile.pathLineColor.h + 55) % 360, s: 74, l: 62 };
         }
       });
     }
     return { seed, difficulty, regions };
   }
 
-  function hash2(ix, iy, seed) {
-    let n = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + (seed | 0)) | 0;
-    n = Math.imul(n ^ (n >>> 13), 1274126177);
-    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
-  }
-
-  function valueNoise(x, y, seed) {
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    const tx = x - x0;
-    const ty = y - y0;
-    const sx = tx * tx * (3 - 2 * tx);
-    const sy = ty * ty * (3 - 2 * ty);
-    const a = hash2(x0, y0, seed);
-    const b = hash2(x0 + 1, y0, seed);
-    const c = hash2(x0, y0 + 1, seed);
-    const d = hash2(x0 + 1, y0 + 1, seed);
-    return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
-  }
-
-  function fbm(x, y, seed) {
-    let value = 0;
-    let amplitude = 0.5;
-    let frequency = 1;
-    let total = 0;
-    for (let octave = 0; octave < 5; octave++) {
-      value += amplitude * valueNoise(x * frequency, y * frequency, seed + octave * 9176);
-      total += amplitude;
-      frequency *= 2.04;
-      amplitude *= 0.5;
-    }
-    return value / total;
-  }
-
-  function makeGeo(seed) {
-    const rand = G.mulberry32(G.hashSeed(`${seed}|geo`));
-    const hue = rand() * 360;
-    const noiseSeed = G.hashSeed(`${seed}|noise`) || 1;
-    return {
-      seed: noiseSeed,
-      sea: 0.455 + rand() * 0.05,
-      deep: { h: hue, s: 62, l: 16 },
-      shallow: { h: (hue + 48) % 360, s: 74, l: 46 },
-      foam: { h: (hue + 170) % 360, s: 24, l: 86 },
-    };
-  }
-
-  function landSample(geo, nx, ny) {
-    const warpX = fbm(nx * 2.4 + 1.3, ny * 2.4, geo.seed);
-    const warpY = fbm(nx * 2.4, ny * 2.4 + 5.1, geo.seed + 80);
-    const x = nx + (warpX - 0.5) * 0.9;
-    const y = ny + (warpY - 0.5) * 0.9;
-    const continent = fbm(x * 3.6, y * 3.6, geo.seed);
-    const detail = fbm(x * 8.2 + 2.2, y * 8.2, geo.seed + 240);
-    const islands = fbm(x * 15 + 8, y * 15, geo.seed + 770);
-    const ridgeNoise = fbm(x * 6.2 + 1.4, y * 6.2, geo.seed + 410);
-    const ridge = 1 - Math.abs(ridgeNoise * 2 - 1);
-    const height = continent * 0.5 + detail * 0.3 + islands * 0.2 + ridge * 0.06;
-    const latitude = Math.abs(ny - 0.5) * 2;
-    const sea = geo.sea + latitude * 0.04;
-    const land = height > sea;
-    const lakeNoise = fbm(x * 13 + 4, y * 13, geo.seed + 1280);
-    return {
-      height,
-      land,
-      shallow: height > sea - 0.032 && height <= sea,
-      mountain: land && (height > sea + 0.1 || ridge > 0.84),
-      coast: land && height < sea + 0.026,
-      lake: land && lakeNoise < 0.36 && height < sea + 0.07,
-    };
-  }
-
   function createPlanet(seed, difficulty) {
+    const terrain = G.makeTerrain(seed);
     for (let salt = 0; salt < 8; salt++) {
       const keyed = salt === 0 ? seed : `${seed}#${salt}`;
-      const planet = tryGenerate(keyed, difficulty, false);
-      if (planet) return finishPlanet(planet, seed);
+      const planet = tryGenerate(keyed, difficulty, terrain, false);
+      if (planet) return finishPlanet(planet, seed, terrain);
     }
-    return finishPlanet(tryGenerate(`${seed}#grid`, difficulty, true), seed);
+    return finishPlanet(tryGenerate(`${seed}#grid`, difficulty, terrain, true), seed, terrain);
   }
 
-  function finishPlanet(planet, seed) {
+  function finishPlanet(planet, seed, terrain) {
     planet.seed = seed;
-    planet.geo = makeGeo(seed);
-    planet.roads = buildRoads(planet);
+    planet.terrain = terrain;
+    planet.network = G.buildNetwork(planet);
+    planet.roads = planet.network.roads;
+    planet.towns = planet.network.towns;
     return planet;
   }
 
-  function buildRoads(planet) {
-    const rand = G.mulberry32(G.hashSeed(`${planet.seed}|roads`));
-    const nodes = [];
-    for (let i = 0; i < 36; i++) {
-      const x = 30 + rand() * 940;
-      const y = 30 + rand() * 940;
-      const sample = landSample(planet.geo, x / 1000, y / 1000);
-      if (sample.land && !sample.lake) nodes.push({ x, y });
-    }
+  function nearestRegion(planet, x, y) {
+    let best = planet.regions[0];
+    let bestDist = Infinity;
     planet.regions.forEach((region) => {
-      const sample = landSample(planet.geo, region.site.x / 1000, region.site.y / 1000);
-      if (sample.land && !sample.lake) nodes.push({ x: region.site.x, y: region.site.y });
+      const dist = (region.site.x - x) ** 2 + (region.site.y - y) ** 2;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = region;
+      }
     });
-    const roads = [];
-    const used = new Set();
-    nodes.forEach((node, index) => {
-      const nearest = nodes
-        .map((other, otherIndex) => ({
-          otherIndex,
-          dist: Math.hypot(other.x - node.x, other.y - node.y),
-        }))
-        .filter((item) => item.otherIndex !== index && item.dist > 40 && item.dist < 320)
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 2);
-      nearest.forEach((item) => {
-        const key = index < item.otherIndex ? `${index}-${item.otherIndex}` : `${item.otherIndex}-${index}`;
-        if (used.has(key)) return;
-        used.add(key);
-        const line = curveRoad(node, nodes[item.otherIndex], rand);
-        const dry = line.filter((point) => {
-          const sample = landSample(planet.geo, point.x / 1000, point.y / 1000);
-          return sample.land && !sample.lake;
-        }).length;
-        if (dry >= line.length * 0.6) roads.push(line);
-      });
-    });
-    return roads;
-  }
-
-  function curveRoad(a, b, rand) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const bend = (rand() - 0.5) * Math.min(160, len * 0.42);
-    const cx = (a.x + b.x) / 2 + (-dy / len) * bend;
-    const cy = (a.y + b.y) / 2 + (dx / len) * bend;
-    const points = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10;
-      const u = 1 - t;
-      points.push({
-        x: u * u * a.x + 2 * u * t * cx + t * t * b.x,
-        y: u * u * a.y + 2 * u * t * cy + t * t * b.y,
-      });
-    }
-    return points;
-  }
-
-  function randomRoadPoint(roads, rng) {
-    const road = roads[Math.floor(rng() * roads.length)];
-    const index = Math.floor(rng() * Math.max(1, road.length - 1));
-    const a = road[index];
-    const b = road[Math.min(road.length - 1, index + 1)];
-    const t = rng();
-    return {
-      x: a.x + (b.x - a.x) * t,
-      y: a.y + (b.y - a.y) * t,
-    };
-  }
-
-  function pointInPoly(x, y, poly) {
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const xi = poly[i].x;
-      const yi = poly[i].y;
-      const xj = poly[j].x;
-      const yj = poly[j].y;
-      const hit = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-9) + xi;
-      if (hit) inside = !inside;
-    }
-    return inside;
-  }
-
-  function distanceToEdges(x, y, poly) {
-    let best = Infinity;
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i];
-      const b = poly[(i + 1) % poly.length];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = dx * dx + dy * dy;
-      const t = len === 0 ? 0 : clamp(((x - a.x) * dx + (y - a.y) * dy) / len, 0, 1);
-      best = Math.min(best, Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy)));
-    }
     return best;
   }
 
-  function centroid(poly) {
-    let x = 0;
-    let y = 0;
-    poly.forEach((point) => {
-      x += point.x;
-      y += point.y;
-    });
-    return { x: x / poly.length, y: y / poly.length };
-  }
-
-  function randomInteriorPoint(poly, rng, geo) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    poly.forEach((point) => {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-    const margins = [42, 22, 8, 0];
-    let fallback = null;
-    for (let m = 0; m < margins.length; m++) {
-      for (let i = 0; i < 80; i++) {
-        const x = minX + rng() * (maxX - minX);
-        const y = minY + rng() * (maxY - minY);
-        if (!pointInPoly(x, y, poly) || distanceToEdges(x, y, poly) < margins[m]) continue;
-        if (!fallback) fallback = { x, y };
-        if (!geo || landSample(geo, x / 1000, y / 1000).land) return { x, y };
-      }
-    }
-    return fallback || centroid(poly);
-  }
-
-  function pickLocation(planet, rng, seen) {
-    let pool = planet.regions.filter((region) => !seen.has(region.id));
-    if (!pool.length) {
-      seen.clear();
-      pool = planet.regions.slice();
-    }
-    const region = pool[Math.floor(rng() * pool.length)];
-    seen.add(region.id);
-    if (planet.roads && planet.roads.length) {
-      for (let i = 0; i < 28; i++) {
-        const spot = randomRoadPoint(planet.roads, rng);
-        const sample = landSample(planet.geo, spot.x / 1000, spot.y / 1000);
-        if (!sample.land || sample.lake) continue;
-        if (!pointInPoly(spot.x, spot.y, region.polygon)) continue;
-        return {
-          regionId: region.id,
-          x: Math.round(spot.x * 100) / 100,
-          y: Math.round(spot.y * 100) / 100,
-        };
-      }
-    }
-    const point = randomInteriorPoint(region.polygon, rng, planet.geo);
+  function pickLocation(planet, rng) {
+    const spot = G.randomRoadSpot(planet, rng);
+    const region = nearestRegion(planet, spot.x, spot.y);
     return {
       regionId: region.id,
-      x: Math.round(point.x * 100) / 100,
-      y: Math.round(point.y * 100) / 100,
+      x: Math.round(spot.x * 100) / 100,
+      y: Math.round(spot.y * 100) / 100,
+      heading: spot.heading,
+      road: spot.road,
+      along: spot.along,
     };
   }
 
   G.cssColor = cssColor;
   G.createPlanet = createPlanet;
   G.pickLocation = pickLocation;
-  G.landSample = landSample;
+  G.nearestRegion = nearestRegion;
 })(window.AlienGuessr = window.AlienGuessr || {});

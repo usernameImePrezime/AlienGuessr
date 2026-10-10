@@ -1,0 +1,34 @@
+All music in this folder is dedicated to the public domain under
+Creative Commons Zero (CC0 1.0 Universal):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Each license was checked on the OpenGameArt page listed below
+(the page shows "License(s): CC0"). Files were renamed, not edited.
+
+stargazer.ogg
+  "Stargazer" by Centurion_of_war
+  https://opengameart.org/content/stargazer
+  original file: techno_stargazev2.1loop.ogg
+
+space-adventure.ogg
+  "Space Adventure" by MintoDog
+  https://opengameart.org/content/space-adventure
+  original file: space_adventure_bpm140.ogg
+
+zenostar.ogg
+  "ZenoStar" by Centurion_of_war
+  https://opengameart.org/content/zenostar
+  original file: xenostar2loop_.ogg
+
+wacky-idlings.ogg
+  "Wacky Idlings" by Fupi
+  https://opengameart.org/content/wacky-idlings
+  original file: wackyidlings.ogg
+
+banana-track.ogg
+  "Banana Track" by skrjablin
+  https://opengameart.org/content/banana-track
+  original file: banana_track.ogg
+
+CC0 does not require attribution, but the authors are credited anyway
+because they asked nicely and they earned it.

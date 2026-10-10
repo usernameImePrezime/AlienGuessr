@@ -1,45 +1,17 @@
 (function (G) {
-  const ALIEN = { blue: "#3d7dff", pink: "#ff4f9a" };
-  const HEIGHT = { short: 0.78, medium: 1, tall: 1.22 };
-  const DIFFICULTY_SCALE = { easy: 1.05, medium: 0.94, hard: 0.78 };
+  const { INK, TAU, clamp, col, mixC, shade, inkW, paint, stroke } = G.ink;
+  const P = G.props;
+  const ROAD_M = 7;
+  const FAR_M = 60;
+  const VERT = 650;
+  const COLUMNS = 96;
 
-  function css(color) {
-    return G.cssColor(color);
-  }
-
-  function shade(color, lightDelta, satDelta) {
-    return {
-      h: color.h,
-      s: color.s + (satDelta || 0),
-      l: color.l + lightDelta,
-    };
-  }
-
-  function hsla(color, alpha) {
-    const h = ((color.h % 360) + 360) % 360;
-    const s = Math.max(0, Math.min(100, color.s));
-    const l = Math.max(0, Math.min(100, color.l));
-    return `hsla(${h} ${s}% ${l}% / ${alpha})`;
-  }
-
-  function stableRand(profile, salt) {
-    const key = [
-      profile.terrain,
-      profile.skyEvent,
-      profile.starPattern,
-      profile.groundPattern,
-      profile.weather,
-      profile.fence,
-      Math.round(profile.skyGradient[0].h),
-      Math.round(profile.skyGradient[1].h),
-      Math.round(profile.groundColor.h),
-      salt,
-    ].join("|");
+  function stableRand(key) {
     return G.mulberry32(G.hashSeed(key));
   }
 
   function shownFeatures(profile, rng) {
-    const keys = ["skyEvent", "stars", "building", "vegetation", "aliens", "fence", "banner", "sign", "pole", "groundPattern", "weather"];
+    const keys = ["skyEvent", "stars", "building", "vegetation", "aliens", "fence", "banner", "sign", "pole", "groundPattern", "weather", "landmark"];
     const shown = {};
     keys.forEach((key) => {
       shown[key] = rng() < 0.34;
@@ -56,1201 +28,1381 @@
     return shown;
   }
 
-  function drawScene(ctx, width, height, profile, rng, difficulty) {
-    const unit = height / 720;
-    const horizon = height * 0.58;
-    const shown = shownFeatures(profile, rng);
-    drawSky(ctx, width, height, horizon, profile);
-    if (shown.stars) drawStars(ctx, width, horizon, profile, unit);
-    if (shown.skyEvent) drawSkyEvent(ctx, width, horizon, profile, unit);
-    drawTerrain(ctx, width, horizon, profile, unit, 0.62, -28);
-    drawTerrain(ctx, width, horizon, profile, unit, 1.05, -8);
-    drawHaze(ctx, width, horizon, profile, unit, 0.22);
-    drawGround(ctx, width, height, horizon, profile);
-    if (shown.groundPattern) drawGroundPattern(ctx, width, height, horizon, profile, unit);
-    drawPath(ctx, width, height, horizon, profile, unit);
-    const layer = [];
-    const queue = (y, draw) => layer.push({ y, draw });
-    if (shown.building) drawBuildings(ctx, width, height, horizon, profile, rng, unit, queue);
-    if (shown.vegetation) drawVegetation(ctx, width, height, horizon, profile, rng, unit, queue);
-    if (shown.banner) drawBanners(ctx, width, height, horizon, profile, rng, unit, queue);
-    if (shown.fence) drawFence(ctx, width, height, horizon, profile, rng, unit, queue);
-    if (shown.pole || shown.sign) drawPoleAndSign(ctx, width, height, horizon, profile, rng, unit, shown, queue);
-    if (shown.aliens) drawAliens(ctx, width, height, horizon, profile, rng, unit, difficulty, queue);
-    layer.sort((a, b) => a.y - b.y);
-    layer.forEach((item) => item.draw());
-    drawPebbles(ctx, width, height, horizon, profile, rng, unit);
-    if (shown.weather) drawWeather(ctx, width, height, horizon, profile, rng, unit, difficulty);
-    drawVignette(ctx, width, height);
+  function camera(W, H, lane) {
+    const y0 = H * 0.5;
+    const f = (W * 0.5) / Math.tan((38 * Math.PI) / 180);
+    return {
+      W,
+      H,
+      cx: W / 2,
+      y0,
+      f,
+      ch: 1.6,
+      lane,
+      p(x, z, y) {
+        const k = this.f / Math.max(0.3, z);
+        return { x: this.cx + (x - this.lane) * k, y: this.y0 + (this.ch - (y || 0)) * k, s: k };
+      },
+    };
   }
 
-  function drawSky(ctx, width, height, horizon, profile) {
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, css(shade(profile.skyGradient[0], -14, 8)));
-    sky.addColorStop(0.22, css(profile.skyGradient[0]));
-    sky.addColorStop(0.48, css(shade(profile.accentColor, -8, -12)));
-    sky.addColorStop(0.7, css(profile.skyGradient[1]));
-    sky.addColorStop(1, css(shade(profile.groundColor, 14, -6)));
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height);
+  function roadModel(planet, loc, rng, kind) {
+    const raw = G.roadAhead(planet, loc, 90).map((p) => ({ z: p.z * ROAD_M, x: p.x * ROAD_M }));
+    const pts = [{ z: 0, x: 0 }];
+    raw.forEach((p) => {
+      if (p.z > pts[pts.length - 1].z + 0.5) pts.push(p);
+    });
+    if (pts.length < 2) pts.push({ z: 100, x: 0 });
+    const amp = kind === "city" ? 0 : (1.2 + rng() * 3.2) * (rng() < 0.5 ? -1 : 1);
+    const wave = 45 + rng() * 70;
+    const phase = rng() * TAU;
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    const slope = (last.x - prev.x) / (last.z - prev.z || 1);
+    function x(z) {
+      let base;
+      if (z >= last.z) base = last.x + (z - last.z) * slope;
+      else {
+        let i = 1;
+        while (i < pts.length - 1 && pts[i].z < z) i += 1;
+        const a = pts[i - 1];
+        const b = pts[i];
+        const t = (z - a.z) / (b.z - a.z || 1);
+        base = a.x + (b.x - a.x) * t;
+      }
+      const sway = amp * (Math.sin((z / wave) * TAU + phase) - Math.sin(phase)) * Math.min(1, z / 30);
+      return base + sway;
+    }
+    return { x };
+  }
 
-    const rand = stableRand(profile, "nebula");
-    for (let i = 0; i < 5; i++) {
-      const x = rand() * width;
-      const y = rand() * horizon * 0.85;
-      const radius = (70 + rand() * 120) * (height / 720);
-      const cloud = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      cloud.addColorStop(0, hsla(shade(profile.skyGradient[1], 16, 10), 0.28));
-      cloud.addColorStop(0.45, hsla(profile.accentColor, 0.12));
-      cloud.addColorStop(1, hsla(profile.skyGradient[0], 0));
-      ctx.fillStyle = cloud;
+  function palette(profile, biome) {
+    const sky0 = profile.skyGradient[0];
+    const sky1 = profile.skyGradient[1];
+    const glow = mixC(shade(profile.accentColor, 24), { h: 48, s: 90, l: 86 }, 0.55);
+    let ground = profile.groundColor;
+    if (biome === "jungle") ground = shade(ground, -6, 8);
+    if (biome === "dry") ground = mixC(ground, { h: 40, s: 48, l: 70 }, 0.55);
+    if (biome === "beach") ground = mixC(ground, { h: 44, s: 60, l: 78 }, 0.75);
+    if (biome === "highland") ground = shade(ground, -3, -10);
+    if (biome === "rock") ground = mixC(ground, { h: 265, s: 14, l: 60 }, 0.55);
+    if (biome === "snow") ground = mixC(ground, { h: 215, s: 35, l: 93 }, 0.82);
+    const plantA = { h: ground.h + 16, s: clamp(ground.s + 14, 30, 70), l: clamp(ground.l - 12, 28, 60) };
+    const plantB = { h: ground.h - 24, s: clamp(ground.s + 6, 30, 70), l: clamp(ground.l - 2, 34, 66) };
+    const plantC = { h: ground.h + 48, s: 52, l: 48 };
+    const hill = shade(mixC(ground, plantA, 0.5), -6);
+    const mountain = mixC({ h: 262, s: 22, l: 58 }, ground, 0.25);
+    return {
+      sky0,
+      sky1,
+      glow,
+      ground,
+      groundFar: mixC(ground, sky1, 0.42),
+      plantA,
+      plantB,
+      plantC,
+      hill,
+      mountain,
+      trunk: { h: (ground.h + 190) % 360, s: 34, l: 46 },
+      rock: mixC({ h: 270, s: 14, l: 62 }, ground, 0.3),
+      dirt: biome === "snow" ? { h: 220, s: 18, l: 82 } : mixC(profile.pathColor, ground, 0.12),
+    };
+  }
+
+  // ---------- paper ----------
+
+  let paperCanvas = null;
+  function paperTexture() {
+    if (paperCanvas) return paperCanvas;
+    const size = 256;
+    paperCanvas = document.createElement("canvas");
+    paperCanvas.width = size;
+    paperCanvas.height = size;
+    const ctx = paperCanvas.getContext("2d");
+    const img = ctx.createImageData(size, size);
+    const rand = G.mulberry32(77031);
+    for (let i = 0; i < size * size; i++) {
+      const x = i % size;
+      const y = (i - x) / size;
+      const fiber = G.valueNoise(x * 0.09, y * 0.02, 991) * 18 + G.valueNoise(x * 0.3, y * 0.3, 313) * 10;
+      const v = 255 - rand() * 22 - fiber;
+      img.data[i * 4] = v;
+      img.data[i * 4 + 1] = v - 3;
+      img.data[i * 4 + 2] = v - 8;
+      img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return paperCanvas;
+  }
+
+  // ---------- sky ----------
+
+  function drawSky(ctx, cam, pal, profile, rng, U) {
+    const { W, y0 } = cam;
+    const g = ctx.createLinearGradient(0, 0, 0, y0);
+    g.addColorStop(0, col(pal.sky0, -4));
+    g.addColorStop(0.55, col(pal.sky1));
+    g.addColorStop(1, col(pal.glow));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, y0 + 4);
+    for (let i = 0; i < 10; i++) {
+      const x = rng() * W;
+      const y = rng() * y0;
+      const r = (80 + rng() * 200) * U;
+      const tint = [pal.sky0, pal.sky1, profile.accentColor, pal.glow][i % 4];
+      const bloom = ctx.createRadialGradient(x, y, 0, x, y, r);
+      bloom.addColorStop(0, col(tint, 8, 0, 0.3));
+      bloom.addColorStop(0.7, col(tint, 8, 0, 0.12));
+      bloom.addColorStop(1, col(tint, 8, 0, 0));
+      ctx.fillStyle = bloom;
       ctx.beginPath();
-      ctx.ellipse(x, y, radius, radius * (0.35 + rand() * 0.35), rand() * Math.PI, 0, Math.PI * 2);
+      ctx.ellipse(x, y, r, r * (0.4 + rng() * 0.4), (rng() - 0.5) * 0.6, 0, TAU);
       ctx.fill();
     }
-
-    const glow = ctx.createLinearGradient(0, horizon - height * 0.18, 0, horizon + height * 0.04);
-    glow.addColorStop(0, hsla(profile.skyGradient[1], 0));
-    glow.addColorStop(0.7, hsla(shade(profile.skyGradient[1], 18), 0.45));
-    glow.addColorStop(1, hsla(profile.groundColor, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, horizon - height * 0.18, width, height * 0.22);
-
-    ctx.save();
     ctx.lineCap = "round";
-    ctx.strokeStyle = hsla(shade(profile.skyGradient[1], 22, 12), 0.28);
-    ctx.lineWidth = Math.max(10, height * 0.018);
-    for (let i = 0; i < 7; i++) {
-      const y = horizon * (0.06 + rand() * 0.62);
-      const x = rand() * width * 0.45;
+    for (let i = 0; i < 6; i++) {
+      const y = y0 * (0.1 + rng() * 0.75);
+      const x = rng() * W * 0.7;
+      ctx.strokeStyle = col(mixC(pal.sky1, { h: 0, s: 0, l: 100 }, 0.5), 0, 0, 0.22);
+      ctx.lineWidth = (6 + rng() * 14) * U;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.bezierCurveTo(
-        x + width * 0.12, y - horizon * 0.07,
-        x + width * 0.26, y + horizon * 0.06,
-        x + width * 0.48, y - horizon * 0.02
-      );
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawStars(ctx, width, horizon, profile, unit) {
-    const rand = stableRand(profile, "stars");
-    const points = [];
-    if (profile.starPattern === "cross") {
-      for (let i = 0; i < 8; i++) points.push([width * 0.5, horizon * (0.08 + i * 0.08)]);
-      for (let i = 0; i < 7; i++) points.push([width * (0.18 + i * 0.1), horizon * 0.36]);
-    } else if (profile.starPattern === "arc") {
-      for (let i = 0; i < 14; i++) {
-        const t = i / 13;
-        points.push([width * (0.08 + t * 0.84), horizon * (0.62 - Math.sin(t * Math.PI) * 0.46)]);
-      }
-    } else if (profile.starPattern === "cluster") {
-      const cx = width * (0.28 + rand() * 0.44);
-      const cy = horizon * (0.22 + rand() * 0.28);
-      for (let i = 0; i < 18; i++) {
-        points.push([cx + (rand() - 0.5) * width * 0.2, cy + (rand() - 0.5) * horizon * 0.24]);
-      }
-    } else if (profile.starPattern === "ring") {
-      const cx = width * (0.35 + rand() * 0.3);
-      const cy = horizon * 0.36;
-      for (let i = 0; i < 16; i++) {
-        const angle = (i / 16) * Math.PI * 2;
-        points.push([cx + Math.cos(angle) * width * 0.16, cy + Math.sin(angle) * horizon * 0.2]);
-      }
-    } else {
-      for (let i = 0; i < 42; i++) points.push([rand() * width, rand() * horizon * 0.88]);
-    }
-
-    points.forEach((point, index) => {
-      const x = point[0];
-      const y = point[1];
-      if (y > horizon - 4) return;
-      ctx.fillStyle = index % 5 === 0 ? "#fff4c8" : "rgba(255,255,255,0.92)";
-      ctx.beginPath();
-      ctx.arc(x, y, (index % 4 === 0 ? 2.3 : 1.25) * unit, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    for (let i = 0; i < 18; i++) {
-      ctx.fillRect(rand() * width, rand() * horizon * 0.8, unit, unit);
-    }
-  }
-
-  function drawSkyEvent(ctx, width, horizon, profile, unit) {
-    const rand = stableRand(profile, "event");
-    const x = width * (0.2 + rand() * 0.6);
-    const y = horizon * (0.2 + rand() * 0.32);
-    if (profile.skyEvent === "eye") drawEyePlanet(ctx, x, y, profile, unit);
-    else if (profile.skyEvent === "jelly") drawJellyPlanet(ctx, x, y, profile, unit);
-    else if (profile.skyEvent === "shard") drawShardPlanet(ctx, x, y, profile, unit);
-    else if (profile.skyEvent === "spiral") drawSpiralPlanet(ctx, x, y, profile, unit);
-    else if (profile.skyEvent === "worm") drawWormPlanet(ctx, x, y, width, profile, unit);
-    else drawFunkyRing(ctx, x, y, profile, unit);
-  }
-
-  function drawFunkyRing(ctx, x, y, profile, unit) {
-    const body = shade(profile.accentColor, 4, 10);
-    ctx.fillStyle = hsla(body, 0.35);
-    ctx.beginPath();
-    ctx.arc(x, y, 78 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = css(body);
-    ctx.beginPath();
-    ctx.arc(x, y, 30 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = hsla(shade(body, 24), 0.8);
-    ctx.beginPath();
-    ctx.arc(x - 8 * unit, y - 8 * unit, 8 * unit, 0, Math.PI * 2);
-    ctx.arc(x + 12 * unit, y + 6 * unit, 5 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = css(shade(profile.skyGradient[1], 20));
-    ctx.lineWidth = 5 * unit;
-    [-0.5, 0.35, 1.1].forEach((tilt, index) => {
-      ctx.beginPath();
-      ctx.ellipse(x, y, (70 + index * 14) * unit, (16 + index * 4) * unit, tilt, 0, Math.PI * 2);
-      ctx.stroke();
-    });
-  }
-
-  function drawEyePlanet(ctx, x, y, profile, unit) {
-    const white = shade(profile.skyGradient[1], 28, -20);
-    ctx.fillStyle = css(profile.accentColor);
-    ctx.beginPath();
-    ctx.ellipse(x, y, 78 * unit, 34 * unit, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = css(white);
-    ctx.beginPath();
-    ctx.arc(x, y, 22 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#140c18";
-    ctx.beginPath();
-    ctx.arc(x + 2 * unit, y, 9 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = hsla(shade(profile.accentColor, 16), 0.7);
-    ctx.lineWidth = 3 * unit;
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.moveTo(x + Math.cos(angle) * 28 * unit, y + Math.sin(angle) * 16 * unit);
-      ctx.lineTo(x + Math.cos(angle) * 70 * unit, y + Math.sin(angle) * 40 * unit);
+      ctx.bezierCurveTo(x + W * 0.1, y - 12 * U, x + W * 0.22, y + 10 * U, x + W * (0.3 + rng() * 0.2), y - 4 * U);
       ctx.stroke();
     }
   }
 
-  function drawJellyPlanet(ctx, x, y, profile, unit) {
-    const blob = shade(profile.accentColor, 8, 16);
-    ctx.fillStyle = hsla(blob, 0.72);
-    ctx.beginPath();
-    ctx.moveTo(x, y - 48 * unit);
-    ctx.bezierCurveTo(x + 70 * unit, y - 60 * unit, x + 64 * unit, y + 20 * unit, x, y + 36 * unit);
-    ctx.bezierCurveTo(x - 68 * unit, y + 24 * unit, x - 72 * unit, y - 40 * unit, x, y - 48 * unit);
-    ctx.fill();
-    ctx.strokeStyle = hsla(shade(blob, -16), 0.8);
-    ctx.lineWidth = 3 * unit;
-    ctx.lineCap = "round";
-    for (let i = -2; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x + i * 14 * unit, y + 20 * unit);
-      ctx.quadraticCurveTo(x + i * 22 * unit, y + 48 * unit, x + i * 10 * unit, y + 74 * unit);
-      ctx.stroke();
-    }
-    ctx.fillStyle = hsla(shade(blob, 30), 0.85);
-    ctx.beginPath();
-    ctx.arc(x - 12 * unit, y - 8 * unit, 8 * unit, 0, Math.PI * 2);
-    ctx.arc(x + 16 * unit, y + 4 * unit, 5 * unit, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawShardPlanet(ctx, x, y, profile, unit) {
-    const color = shade(profile.accentColor, 6);
-    ctx.fillStyle = css(color);
-    [[0, -46, 18, -8, -16, 6], [20, -10, 58, 12, 16, 28], [-24, 8, -60, 24, -8, 36], [6, 10, 24, 52, -18, 40]].forEach((poly) => {
-      ctx.beginPath();
-      ctx.moveTo(x + poly[0] * unit, y + poly[1] * unit);
-      ctx.lineTo(x + poly[2] * unit, y + poly[3] * unit);
-      ctx.lineTo(x + poly[4] * unit, y + poly[5] * unit);
-      ctx.closePath();
-      ctx.fill();
-    });
-    ctx.strokeStyle = hsla(shade(color, 24), 0.7);
-    ctx.lineWidth = 2 * unit;
-    ctx.stroke();
-  }
-
-  function drawSpiralPlanet(ctx, x, y, profile, unit) {
-    ctx.strokeStyle = css(shade(profile.accentColor, 10, 12));
-    ctx.lineWidth = 7 * unit;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    for (let i = 0; i < 48; i++) {
-      const t = i / 48;
-      const angle = t * Math.PI * 5.2;
-      const radius = (8 + t * 62) * unit;
-      const px = x + Math.cos(angle) * radius;
-      const py = y + Math.sin(angle) * radius * 0.72;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-    ctx.fillStyle = css(shade(profile.skyGradient[1], 20));
-    ctx.beginPath();
-    ctx.arc(x, y, 8 * unit, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawWormPlanet(ctx, x, y, width, profile, unit) {
-    ctx.strokeStyle = css(profile.accentColor);
-    ctx.fillStyle = css(shade(profile.accentColor, 8));
-    ctx.lineWidth = 16 * unit;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x - width * 0.12, y);
-    ctx.bezierCurveTo(x, y - 50 * unit, x + width * 0.08, y + 40 * unit, x + width * 0.16, y - 10 * unit);
-    ctx.stroke();
-    const headX = x + width * 0.16;
-    const headY = y - 10 * unit;
-    ctx.beginPath();
-    ctx.arc(headX, headY, 18 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#f7fbff";
-    ctx.beginPath();
-    ctx.arc(headX - 6 * unit, headY - 2 * unit, 4 * unit, 0, Math.PI * 2);
-    ctx.arc(headX + 6 * unit, headY - 2 * unit, 4 * unit, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawSun(ctx, x, y, glow, unit) {
-    const halo = ctx.createRadialGradient(x, y, 8 * unit, x, y, 170 * unit);
-    halo.addColorStop(0, hsla(glow, 0.95));
-    halo.addColorStop(0.35, hsla(glow, 0.35));
-    halo.addColorStop(1, hsla(glow, 0));
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(x, y, 170 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#fffaf0";
-    ctx.beginPath();
-    ctx.arc(x, y, 28 * unit, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawMoons(ctx, x, y, glow, unit) {
-    drawCrescent(ctx, x - 54 * unit, y, 34 * unit, glow);
-    drawCrescent(ctx, x + 46 * unit, y + 18 * unit, 22 * unit, shade(glow, 8));
-  }
-
-  function drawCrescent(ctx, x, y, radius, color) {
-    ctx.fillStyle = css(shade(color, 18, -10));
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0.5, Math.PI * 1.7);
-    ctx.arc(x + radius * 0.42, y - radius * 0.05, radius * 0.82, Math.PI * 1.7, 0.5, true);
-    ctx.fill();
-  }
-
-  function drawRingedPlanet(ctx, x, y, profile, unit) {
-    const body = shade(profile.accentColor, 6);
-    const halo = ctx.createRadialGradient(x, y, 10, x, y, 90 * unit);
-    halo.addColorStop(0, hsla(body, 0.45));
-    halo.addColorStop(1, hsla(body, 0));
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(x, y, 90 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = hsla(shade(body, 20), 0.85);
-    ctx.lineWidth = 7 * unit;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 78 * unit, 18 * unit, -0.4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = css(body);
-    ctx.beginPath();
-    ctx.arc(x, y, 26 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = hsla(shade(body, 24), 0.9);
-    ctx.beginPath();
-    ctx.ellipse(x, y, 78 * unit, 18 * unit, -0.4, -0.2, Math.PI + 0.2);
-    ctx.stroke();
-  }
-
-  function drawAurora(ctx, width, horizon, profile, unit) {
-    const bands = 5;
-    for (let i = 0; i < bands; i++) {
-      const x = width * (0.12 + i * 0.16);
-      const gradient = ctx.createLinearGradient(x, horizon * 0.05, x, horizon);
-      gradient.addColorStop(0, hsla(shade(profile.accentColor, 10), 0));
-      gradient.addColorStop(0.45, hsla(profile.accentColor, 0.38));
-      gradient.addColorStop(1, hsla(profile.accentColor, 0));
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.moveTo(x, horizon);
-      ctx.quadraticCurveTo(x + 30 * unit, horizon * 0.45, x + 10 * unit, horizon * 0.08);
-      ctx.quadraticCurveTo(x + 50 * unit, horizon * 0.4, x + 46 * unit, horizon);
-      ctx.fill();
-    }
-  }
-
-  function drawEclipse(ctx, x, y, glow, unit) {
-    const corona = ctx.createRadialGradient(x, y, 22 * unit, x, y, 90 * unit);
-    corona.addColorStop(0, hsla(glow, 0.9));
-    corona.addColorStop(0.4, hsla(glow, 0.25));
-    corona.addColorStop(1, hsla(glow, 0));
-    ctx.fillStyle = corona;
-    ctx.beginPath();
-    ctx.arc(x, y, 90 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#140e18";
-    ctx.beginPath();
-    ctx.arc(x, y, 24 * unit, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = hsla(shade(glow, 16), 0.8);
-    ctx.lineWidth = 3 * unit;
-    ctx.stroke();
-  }
-
-  function drawTerrain(ctx, width, horizon, profile, unit, depth, yShift) {
-    const rand = stableRand(profile, `terrain-${depth}`);
-    const base = horizon + yShift * unit;
-    const color = depth < 1 ? shade(profile.groundColor, 18, -18) : shade(profile.groundColor, -4);
-    ctx.fillStyle = css(color);
-    ctx.beginPath();
-    ctx.moveTo(0, base + 30 * unit);
-    if (profile.terrain === "mesa") {
-      let x = 0;
-      while (x < width) {
-        const block = (80 + rand() * 110) * unit * depth;
-        const top = (24 + rand() * 78) * unit * depth;
-        ctx.lineTo(x, base - top * 0.15);
-        ctx.lineTo(x, base - top);
-        ctx.lineTo(Math.min(width, x + block), base - top);
-        x += block + (10 + rand() * 26) * unit;
-        ctx.lineTo(Math.min(width, x), base - top * 0.2);
-      }
-    } else if (profile.terrain === "dune") {
-      const steps = 28;
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const lift = (28 + Math.sin(t * Math.PI * 3.2 + depth) * 22 + Math.sin(t * 12) * 6) * unit * depth;
-        ctx.lineTo(width * t, base - lift);
-      }
-    } else if (profile.terrain === "spire") {
-      const spikes = 9;
-      for (let i = 0; i <= spikes; i++) {
-        const x = (width / spikes) * i;
-        const tall = i % 2 === 0;
-        ctx.lineTo(x, base - (tall ? 90 + rand() * 50 : 12 + rand() * 16) * unit * depth);
-      }
-    } else {
-      const steps = 12;
-      for (let i = 0; i <= steps; i++) {
-        const x = (width / steps) * i;
-        ctx.lineTo(x, base - (18 + rand() * 62) * unit * depth);
-      }
-    }
-    ctx.lineTo(width, base + 40 * unit);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  function drawHaze(ctx, width, horizon, profile, unit, alpha) {
-    const haze = ctx.createLinearGradient(0, horizon - 70 * unit, 0, horizon + 50 * unit);
-    haze.addColorStop(0, hsla(profile.skyGradient[1], 0));
-    haze.addColorStop(0.55, hsla(shade(profile.skyGradient[1], 16, -20), alpha));
-    haze.addColorStop(1, hsla(profile.groundColor, 0));
-    ctx.fillStyle = haze;
-    ctx.fillRect(0, horizon - 70 * unit, width, 130 * unit);
-  }
-
-  function drawGround(ctx, width, height, horizon, profile) {
-    const ground = ctx.createLinearGradient(0, horizon, 0, height);
-    ground.addColorStop(0, css(shade(profile.groundColor, 12, -6)));
-    ground.addColorStop(0.35, css(profile.groundColor));
-    ground.addColorStop(1, css(shade(profile.groundColor, -14, -4)));
-    ctx.fillStyle = ground;
-    ctx.fillRect(0, horizon - 2, width, height - horizon + 4);
-    const speckle = stableRand(profile, "soil");
-    for (let i = 0; i < 70; i++) {
-      const y = horizon + speckle() * (height - horizon);
-      const near = (y - horizon) / (height - horizon);
-      ctx.fillStyle = hsla(shade(profile.groundColor, speckle() < 0.5 ? -12 : 10), 0.18 + near * 0.2);
-      ctx.beginPath();
-      ctx.ellipse(speckle() * width, y, (1.2 + speckle() * 4) * (0.4 + near), (0.6 + speckle() * 1.4) * (0.4 + near), 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawGroundPattern(ctx, width, height, horizon, profile, unit) {
-    const rand = stableRand(profile, "ground");
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, horizon, width, height - horizon);
-    ctx.clip();
-    if (profile.groundPattern === "cracked") {
-      ctx.strokeStyle = hsla(shade(profile.groundColor, -22), 0.65);
-      ctx.lineWidth = Math.max(1, 1.4 * unit);
-      for (let i = 0; i < 16; i++) {
-        let x = rand() * width;
-        let y = horizon + rand() * (height - horizon);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        for (let step = 0; step < 4; step++) {
-          x += (rand() - 0.5) * 90 * unit;
-          y += (rand() * 28 + 8) * unit;
-          ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-    } else if (profile.groundPattern === "rippled") {
-      ctx.strokeStyle = hsla(shade(profile.groundColor, 16), 0.45);
-      ctx.lineWidth = Math.max(1, 2 * unit);
-      for (let row = 0; row < 9; row++) {
-        const y = horizon + (height - horizon) * (0.08 + row * 0.1);
-        ctx.beginPath();
-        for (let x = 0; x <= width; x += 16 * unit) {
-          const wave = Math.sin(x / (28 * unit) + row) * 5 * unit;
-          if (x === 0) ctx.moveTo(x, y + wave);
-          else ctx.lineTo(x, y + wave);
-        }
-        ctx.stroke();
-      }
-    } else if (profile.groundPattern === "hex") {
-      ctx.strokeStyle = hsla(shade(profile.groundColor, 18), 0.4);
-      ctx.lineWidth = Math.max(1, 1.5 * unit);
-      const size = 28 * unit;
-      for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 14; col++) {
-          const x = col * size * 1.7 + (row % 2) * size * 0.85;
-          const y = horizon + 20 * unit + row * size * 1.15;
-          drawHex(ctx, x, y, size * 0.72);
-        }
-      }
-    } else {
-      ctx.fillStyle = hsla(shade(profile.groundColor, -10), 0.35);
-      for (let i = 0; i < 40; i++) {
-        ctx.beginPath();
-        ctx.ellipse(rand() * width, horizon + rand() * (height - horizon), (2 + rand() * 5) * unit, (1 + rand() * 2) * unit, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-
-  function drawHex(ctx, x, y, radius) {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI / 3) * i - Math.PI / 6;
-      const px = x + Math.cos(angle) * radius;
-      const py = y + Math.sin(angle) * radius;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
-
-  function depthScale(y, height, horizon) {
-    const t = (y - horizon) / (height - horizon);
-    return 0.45 + Math.max(0, Math.min(1, t)) * 0.9;
-  }
-
-  function photoDepth(rng) {
-    const roll = rng();
-    if (roll < 0.34) return 0.1 + rng() * 0.16;
-    if (roll < 0.67) return 0.34 + rng() * 0.2;
-    return 0.62 + rng() * 0.3;
-  }
-
-  function distanceScale(y, height, horizon) {
-    const t = Math.max(0, Math.min(1, (y - horizon) / (height - horizon)));
-    return 0.28 + t * t * 1.65;
-  }
-
-  function sideX(rng, width, height, horizon, side, y, inset) {
-    const t = Math.max(0, Math.min(1, (y - horizon) / (height - horizon)));
-    const half = width * (0.04 + t * 0.2);
-    const center = width / 2;
-    const edge = 36 + inset;
-    let x;
-    if (side === "left") {
-      const max = center - half - 18;
-      x = edge + rng() * Math.max(12, max - edge);
-    } else {
-      const min = center + half + 18;
-      x = min + rng() * Math.max(12, width - edge - min);
-    }
-    return Math.max(edge, Math.min(width - edge, x));
-  }
-
-  function bandPoint(rng, width, height, horizon, side, yNorm, inset) {
-    const y = horizon + (height - horizon) * yNorm;
-    return {
-      x: sideX(rng, width, height, horizon, side, y, inset),
-      y,
-      scale: Math.max(0.62, depthScale(y, height, horizon)),
-    };
-  }
-
-  function drawPath(ctx, width, height, horizon, profile, unit) {
-    const rand = stableRand(profile, "road");
-    const bottomL = width * 0.26;
-    const bottomR = width * 0.74;
-    const topL = width * 0.468;
-    const topR = width * 0.532;
-    function lane(y, bias) {
-      const t = Math.max(0, Math.min(1, (y - horizon) / (height - horizon)));
-      const left = topL + (bottomL - topL) * t;
-      const right = topR + (bottomR - topR) * t;
-      return left + (right - left) * bias;
-    }
-    function roadQuad(y0, y1, b0, b1) {
-      ctx.beginPath();
-      ctx.moveTo(lane(y0, b0), y0);
-      ctx.lineTo(lane(y1, b0), y1);
-      ctx.lineTo(lane(y1, b1), y1);
-      ctx.lineTo(lane(y0, b1), y0);
-      ctx.closePath();
-    }
-
-    ctx.fillStyle = hsla(shade(profile.groundColor, -10), 0.95);
-    roadQuad(horizon, height, -0.1, 1.1);
-    ctx.fill();
-
-    ctx.save();
-    roadQuad(horizon, height, 0, 1);
-    ctx.clip();
-    const crown = ctx.createLinearGradient(bottomL, 0, bottomR, 0);
-    const dirt = {
-      h: 28 + (profile.pathColor.h % 36) * 0.2,
-      s: 26 + profile.pathColor.s * 0.12,
-      l: 36 + profile.pathColor.l * 0.16,
-    };
-    crown.addColorStop(0, css(shade(dirt, -22, -8)));
-    crown.addColorStop(0.14, css(shade(dirt, -10, -4)));
-    crown.addColorStop(0.5, css(shade(dirt, 18, 6)));
-    crown.addColorStop(0.86, css(shade(dirt, -10, -4)));
-    crown.addColorStop(1, css(shade(dirt, -22, -8)));
-    ctx.fillStyle = crown;
-    ctx.fillRect(0, horizon, width, height - horizon);
-    for (let i = 0; i < 48; i++) {
-      const y = horizon + (height - horizon) * rand();
-      const side = 0.08 + rand() * 0.84;
-      const edge = Math.abs(side - 0.5) * 2;
-      const spread = (3 + rand() * 14) * unit * (0.35 + (y - horizon) / (height - horizon));
-      ctx.fillStyle = hsla(shade(dirt, (rand() - 0.5) * 16 - edge * 8), 0.35 + rand() * 0.4);
-      ctx.beginPath();
-      ctx.ellipse(lane(y, side), y, spread, spread * (0.28 + rand() * 0.25), rand() * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-
-    ctx.fillStyle = hsla(shade(profile.pathColor, -20), 0.55);
-    for (let i = 0; i < 26; i++) {
-      const y = horizon + (height - horizon) * (0.08 + rand() * 0.9);
-      const side = rand() < 0.5 ? 0.04 + rand() * 0.08 : 0.88 + rand() * 0.08;
-      const spread = (4 + rand() * 10) * unit * (0.4 + (y - horizon) / (height - horizon));
-      ctx.beginPath();
-      ctx.ellipse(lane(y, side), y, spread, spread * 0.45, rand(), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.strokeStyle = hsla(shade(profile.pathColor, -24), 0.55);
-    ctx.lineWidth = Math.max(1, 2.2 * unit);
-    [0.36, 0.64].forEach((bias) => {
-      ctx.beginPath();
-      for (let step = 0; step <= 16; step++) {
-        const t = step / 16;
-        const y = horizon + (height - horizon) * t;
-        const wobble = Math.sin(t * 18 + bias * 6) * 0.012;
-        const x = lane(y, bias + wobble);
-        if (step === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    });
-
-    const sideBias = profile.drivingSide === "left" ? 0.24 : 0.76;
-    ctx.save();
-    ctx.lineCap = "round";
-    if (profile.pathStyle === "plates") {
-      ctx.strokeStyle = hsla(shade(profile.pathColor, -26), 0.42);
-      ctx.lineWidth = Math.max(1, 1.3 * unit);
-      for (let i = 0; i < 6; i++) {
-        const y = horizon + (height - horizon) * (0.16 + i * 0.13);
-        const start = 0.12 + (i % 3) * 0.08;
-        ctx.beginPath();
-        ctx.moveTo(lane(y, start), y);
-        ctx.lineTo(lane(y, start + 0.18), y);
-        ctx.moveTo(lane(y + unit, 0.58), y + unit);
-        ctx.lineTo(lane(y + unit, 0.78), y + unit);
-        ctx.stroke();
-      }
-    } else if (profile.pathStyle === "glow") {
-      ctx.shadowColor = css(profile.pathLineColor);
-      ctx.shadowBlur = 14 * unit;
-      ctx.strokeStyle = css(profile.pathLineColor);
-      ctx.lineWidth = Math.max(3, 6 * unit);
-      ctx.beginPath();
-      ctx.moveTo(lane(horizon + 8, sideBias), horizon + 8);
-      ctx.lineTo(lane(height - 6, sideBias), height - 6);
-      ctx.stroke();
-    } else if (profile.pathStyle === "rails") {
-      ctx.strokeStyle = css(profile.pathLineColor);
-      ctx.lineWidth = Math.max(2, 3.5 * unit);
-      [sideBias - 0.07, sideBias + 0.07].forEach((bias) => {
-        ctx.beginPath();
-        ctx.moveTo(lane(horizon + 8, bias), horizon + 8);
-        ctx.lineTo(lane(height - 6, bias), height - 6);
-        ctx.stroke();
-      });
-      ctx.lineWidth = Math.max(1, 1.5 * unit);
-      for (let i = 0; i < 10; i++) {
-        const y = horizon + (height - horizon) * (0.12 + i * 0.08);
-        ctx.beginPath();
-        ctx.moveTo(lane(y, sideBias - 0.07), y);
-        ctx.lineTo(lane(y, sideBias + 0.07), y);
-        ctx.stroke();
-      }
-    } else {
-      ctx.strokeStyle = hsla(profile.pathLineColor, 0.85);
-      ctx.lineWidth = Math.max(2, 4 * unit);
-      ctx.setLineDash([14 * unit, 16 * unit]);
-      ctx.beginPath();
-      ctx.moveTo(lane(horizon + 8, sideBias), horizon + 8);
-      ctx.lineTo(lane(height - 6, sideBias), height - 6);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
-  }
-
-  function drawBuildings(ctx, width, height, horizon, profile, rng, unit, queue) {
-    const count = 1 + Math.floor(rng() * 2);
-    for (let i = 0; i < count; i++) {
-      const spot = bandPoint(rng, width, height, horizon, profile.drivingSide, photoDepth(rng), 26);
-      const scale = distanceScale(spot.y, height, horizon) * unit * 4.6;
-      queue(spot.y, () => drawBuilding(ctx, spot.x, spot.y, scale, profile));
-    }
-  }
-
-  function drawBuilding(ctx, x, y, scale, profile) {
-    const w = 26 * scale;
-    const h = 32 * scale;
-    const left = x - w / 2;
-    const wallTop = y - h * 0.72;
-    const wall = shade(profile.roofColor, -18, -12);
-    ctx.fillStyle = hsla(shade(wall, -18), 0.35);
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.15, y, w * 0.7, h * 0.08, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = css(wall);
-    if (profile.roofShape === "arch") {
-      ctx.beginPath();
-      ctx.moveTo(left, y);
-      ctx.lineTo(left, wallTop + h * 0.28);
-      ctx.quadraticCurveTo(x, wallTop - h * 0.08, left + w, wallTop + h * 0.28);
-      ctx.lineTo(left + w, y);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.fillRect(left, wallTop + h * 0.22, w, y - (wallTop + h * 0.22));
-    }
-
-    ctx.fillStyle = css(profile.roofColor);
-    if (profile.roofShape === "dome") {
-      ctx.beginPath();
-      ctx.ellipse(x, wallTop + h * 0.28, w * 0.56, h * 0.28, 0, Math.PI, 0);
-      ctx.fill();
-    } else if (profile.roofShape === "spike") {
-      ctx.beginPath();
-      ctx.moveTo(left - w * 0.08, wallTop + h * 0.34);
-      ctx.lineTo(x, wallTop - h * 0.16);
-      ctx.lineTo(left + w * 1.08, wallTop + h * 0.34);
-      ctx.closePath();
-      ctx.fill();
-    } else if (profile.roofShape === "flat") {
-      ctx.fillRect(left - w * 0.08, wallTop + h * 0.12, w * 1.16, h * 0.12);
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(left + w * 0.08, wallTop + h * 0.36);
-      ctx.quadraticCurveTo(x, wallTop - h * 0.12, left + w * 0.92, wallTop + h * 0.36);
-      ctx.lineTo(left + w * 0.78, wallTop + h * 0.36);
-      ctx.quadraticCurveTo(x, wallTop + h * 0.08, left + w * 0.22, wallTop + h * 0.36);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    drawWindows(ctx, x, y - h * 0.28, w, h, profile);
-    ctx.fillStyle = css(shade(profile.roofColor, -28));
-    ctx.fillRect(x - w * 0.08, y - h * 0.28, w * 0.16, h * 0.28);
-  }
-
-  function drawWindows(ctx, x, y, w, h, profile) {
-    ctx.fillStyle = css(shade(profile.accentColor, 12));
-    const style = profile.windowStyle;
-    if (style === "round") {
-      ctx.beginPath();
-      ctx.arc(x - w * 0.22, y, w * 0.09, 0, Math.PI * 2);
-      ctx.arc(x + w * 0.22, y, w * 0.09, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (style === "grid") {
-      for (let col = 0; col < 2; col++) {
-        for (let row = 0; row < 2; row++) {
-          ctx.fillRect(x - w * 0.28 + col * w * 0.22, y - h * 0.08 + row * h * 0.1, w * 0.1, h * 0.07);
-        }
-      }
-    } else if (style === "arch") {
-      [-0.24, 0.12].forEach((offset) => {
-        const left = x + w * offset;
-        ctx.beginPath();
-        ctx.moveTo(left, y + h * 0.08);
-        ctx.lineTo(left, y - h * 0.02);
-        ctx.quadraticCurveTo(left + w * 0.08, y - h * 0.12, left + w * 0.16, y - h * 0.02);
-        ctx.lineTo(left + w * 0.16, y + h * 0.08);
-        ctx.fill();
-      });
-    } else {
-      ctx.fillRect(x - w * 0.28, y - h * 0.08, w * 0.07, h * 0.2);
-      ctx.fillRect(x + w * 0.16, y - h * 0.08, w * 0.07, h * 0.2);
-    }
-  }
-
-  function drawVegetation(ctx, width, height, horizon, profile, rng, unit, queue) {
-    const count = 1 + Math.floor(rng() * 3);
-    for (let i = 0; i < count; i++) {
-      const spot = bandPoint(rng, width, height, horizon, profile.drivingSide, photoDepth(rng), 8);
-      const scale = distanceScale(spot.y, height, horizon) * unit * 4.2;
-      queue(spot.y, () => drawPlant(ctx, spot.x, spot.y, scale, profile));
-    }
-  }
-
-  function drawPlant(ctx, x, y, scale, profile) {
-    if (profile.vegetation === "crystal") drawCrystal(ctx, x, y, scale, profile);
-    else if (profile.vegetation === "mushroom") drawMushroom(ctx, x, y, scale, profile);
-    else if (profile.vegetation === "coral") drawCoral(ctx, x, y, scale, profile);
-    else drawSpikePlant(ctx, x, y, scale, profile);
-  }
-
-  function drawCrystal(ctx, x, y, scale, profile) {
-    ctx.fillStyle = css(profile.vegetationColor);
-    ctx.beginPath();
-    ctx.moveTo(x, y - 36 * scale);
-    ctx.lineTo(x + 11 * scale, y - 8 * scale);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x - 11 * scale, y - 8 * scale);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = hsla(shade(profile.vegetationColor, 24), 0.85);
-    ctx.beginPath();
-    ctx.moveTo(x - 2 * scale, y - 30 * scale);
-    ctx.lineTo(x + 2 * scale, y - 12 * scale);
-    ctx.lineTo(x - 5 * scale, y - 12 * scale);
-    ctx.fill();
-    ctx.fillStyle = css(shade(profile.vegetationColor, -8));
-    ctx.beginPath();
-    ctx.moveTo(x + 14 * scale, y - 22 * scale);
-    ctx.lineTo(x + 22 * scale, y - 4 * scale);
-    ctx.lineTo(x + 12 * scale, y);
-    ctx.lineTo(x + 7 * scale, y - 6 * scale);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  function drawMushroom(ctx, x, y, scale, profile) {
-    ctx.fillStyle = css(shade(profile.vegetationColor, -24, -15));
-    ctx.fillRect(x - 3.5 * scale, y - 18 * scale, 7 * scale, 18 * scale);
-    const cap = ctx.createLinearGradient(x, y - 30 * scale, x, y - 12 * scale);
-    cap.addColorStop(0, css(shade(profile.vegetationColor, 12)));
-    cap.addColorStop(1, css(profile.vegetationColor));
-    ctx.fillStyle = cap;
-    ctx.beginPath();
-    ctx.ellipse(x, y - 18 * scale, 18 * scale, 11 * scale, 0, Math.PI, 0);
-    ctx.fill();
-    ctx.fillStyle = hsla(shade(profile.vegetationColor, 28), 0.9);
-    ctx.beginPath();
-    ctx.arc(x - 6 * scale, y - 21 * scale, 2.4 * scale, 0, Math.PI * 2);
-    ctx.arc(x + 5 * scale, y - 19 * scale, 1.7 * scale, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawCoral(ctx, x, y, scale, profile) {
-    ctx.strokeStyle = css(profile.vegetationColor);
-    ctx.fillStyle = css(shade(profile.vegetationColor, 14));
-    ctx.lineWidth = Math.max(2, 4.5 * scale);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x - 10 * scale, y - 16 * scale, x - 6 * scale, y - 32 * scale);
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 2 * scale, y - 28 * scale);
-    ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + 12 * scale, y - 14 * scale, x + 14 * scale, y - 30 * scale);
-    ctx.stroke();
-    [[-6, -32], [2, -28], [14, -30]].forEach(([dx, dy]) => {
-      ctx.beginPath();
-      ctx.arc(x + dx * scale, y + dy * scale, 4 * scale, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
-
-  function drawSpikePlant(ctx, x, y, scale, profile) {
-    ctx.fillStyle = css(profile.vegetationColor);
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x + i * 8 * scale, y);
-      ctx.lineTo(x + i * 11 * scale, y - (20 + Math.abs(i) * 8) * scale);
-      ctx.lineTo(x + (i * 8 + 5) * scale, y);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  function drawBanners(ctx, width, height, horizon, profile, rng, unit, queue) {
-    if (profile.banner === "none") return;
-    const yNorm = photoDepth(rng);
-    const y = horizon + (height - horizon) * yNorm;
-    const x = sideX(rng, width, height, horizon, profile.drivingSide, y, 20);
-    const scale = distanceScale(y, height, horizon) * unit * 3.2;
-    queue(y, () => drawBannerAt(ctx, x, y, scale, profile));
-  }
-
-  function drawBannerAt(ctx, x, y, scale, profile) {
-    ctx.strokeStyle = css(profile.poleColor);
-    ctx.lineWidth = Math.max(2, 2 * scale);
-    ctx.beginPath();
-    ctx.moveTo(x - 34 * scale, y - 28 * scale);
-    ctx.lineTo(x + 34 * scale, y - 28 * scale);
-    ctx.stroke();
-    if (profile.banner === "flags") {
-      for (let i = -1; i <= 1; i++) {
-        const fx = x + i * 22 * scale;
-        ctx.fillStyle = css(i === 0 ? profile.accentColor : shade(profile.accentColor, i * 8));
-        ctx.beginPath();
-        ctx.moveTo(fx, y - 28 * scale);
-        ctx.lineTo(fx + 14 * scale, y - 20 * scale);
-        ctx.lineTo(fx, y - 12 * scale);
-        ctx.fill();
-      }
-    } else if (profile.banner === "lanterns") {
-      for (let i = -1; i <= 1; i++) {
-        const lx = x + i * 22 * scale;
-        ctx.strokeStyle = css(profile.poleColor);
-        ctx.beginPath();
-        ctx.moveTo(lx, y - 28 * scale);
-        ctx.lineTo(lx, y - 18 * scale);
-        ctx.stroke();
-        ctx.fillStyle = css(profile.accentColor);
-        ctx.beginPath();
-        ctx.arc(lx, y - 12 * scale, 6 * scale, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      ctx.strokeStyle = css(profile.accentColor);
-      ctx.lineWidth = Math.max(2, 3 * scale);
-      ctx.beginPath();
-      ctx.moveTo(x - 34 * scale, y - 20 * scale);
-      ctx.quadraticCurveTo(x, y - 6 * scale, x + 34 * scale, y - 22 * scale);
-      ctx.stroke();
-    }
-  }
-
-  function drawFence(ctx, width, height, horizon, profile, rng, unit, queue) {
-    if (profile.fence === "none") return;
-    const y = horizon + (height - horizon) * photoDepth(rng);
-    const scale = distanceScale(y, height, horizon) * unit * 3.1;
-    const x = sideX(rng, width, height, horizon, profile.drivingSide, y, 30);
-    queue(y, () => drawFenceAt(ctx, x, y, scale, profile));
-  }
-
-  function drawFenceAt(ctx, x, y, scale, profile) {
-    const posts = 4;
-    const gap = 22 * scale;
-    ctx.strokeStyle = css(profile.poleColor);
-    ctx.fillStyle = css(shade(profile.poleColor, -8));
-    ctx.lineWidth = Math.max(2, 3 * scale);
-    ctx.lineCap = "round";
-    if (profile.fence === "wall") {
-      ctx.fillRect(x - gap * 1.6, y - 16 * scale, gap * 3.2, 16 * scale);
-      ctx.fillStyle = css(profile.accentColor);
-      ctx.fillRect(x - gap * 1.6, y - 20 * scale, gap * 3.2, 5 * scale);
-      return;
-    }
-    for (let i = 0; i < posts; i++) {
-      const px = x + (i - 1.5) * gap;
-      ctx.beginPath();
-      ctx.moveTo(px, y);
-      ctx.lineTo(px, y - 26 * scale);
-      ctx.stroke();
-      if (profile.fence === "posts" && i < posts - 1) {
-        ctx.beginPath();
-        ctx.moveTo(px, y - 18 * scale);
-        ctx.lineTo(px + gap, y - 18 * scale);
-        ctx.stroke();
-      }
-    }
-    if (profile.fence === "chain") {
-      ctx.beginPath();
-      for (let i = 0; i < posts - 1; i++) {
-        const px = x + (i - 1.5) * gap;
-        ctx.moveTo(px, y - 20 * scale);
-        ctx.quadraticCurveTo(px + gap / 2, y - 6 * scale, px + gap, y - 20 * scale);
-      }
-      ctx.stroke();
-    }
-  }
-
-  function drawPoleAndSign(ctx, width, height, horizon, profile, rng, unit, shown, queue) {
-    const pole = bandPoint(rng, width, height, horizon, profile.drivingSide, photoDepth(rng), 34);
-    const scale = distanceScale(pole.y, height, horizon) * unit * 4.3;
-    queue(pole.y, () => {
-      if (!shown || shown.pole) drawPole(ctx, pole.x, pole.y, scale, profile);
-      if (!shown || shown.sign) {
-        const outward = profile.drivingSide === "left" ? -1 : 1;
-        const signX = Math.max(56, Math.min(width - 56, pole.x + outward * Math.min(width * 0.11, 26 * scale)));
-        drawSign(ctx, signX, pole.y, scale * 0.92, profile);
-      }
-    });
-  }
-
-  function drawPole(ctx, x, y, scale, profile) {
-    ctx.strokeStyle = css(profile.poleColor);
-    ctx.fillStyle = css(profile.poleColor);
-    ctx.lineWidth = Math.max(3, 4.5 * scale);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, y - 58 * scale);
-    ctx.stroke();
-    const top = y - 58 * scale;
-    if (profile.poleTop === "ball") {
-      ctx.beginPath();
-      ctx.arc(x, top, 8 * scale, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (profile.poleTop === "ring") {
-      ctx.beginPath();
-      ctx.arc(x, top - 2 * scale, 9 * scale, 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (profile.poleTop === "fork") {
-      ctx.beginPath();
-      ctx.moveTo(x, top);
-      ctx.lineTo(x - 12 * scale, top - 18 * scale);
-      ctx.moveTo(x, top);
-      ctx.lineTo(x + 12 * scale, top - 18 * scale);
-      ctx.stroke();
-    }
-  }
-
-  function drawSign(ctx, x, y, scale, profile) {
-    const board = y - 36 * scale;
-    ctx.strokeStyle = css(profile.poleColor);
-    ctx.lineWidth = Math.max(2, 3 * scale);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, board + 14 * scale);
-    ctx.stroke();
-    ctx.fillStyle = css(profile.accentColor);
-    const s = 18 * scale;
-    ctx.beginPath();
-    if (profile.signShape === "circle") ctx.arc(x, board, s, 0, Math.PI * 2);
-    else if (profile.signShape === "diamond") {
-      ctx.moveTo(x, board - s);
-      ctx.lineTo(x + s, board);
-      ctx.lineTo(x, board + s);
-      ctx.lineTo(x - s, board);
-      ctx.closePath();
-    } else if (profile.signShape === "triangle") {
-      ctx.moveTo(x, board - s * 1.05);
-      ctx.lineTo(x + s, board + s * 0.82);
-      ctx.lineTo(x - s, board + s * 0.82);
-      ctx.closePath();
-    } else {
-      ctx.moveTo(x - s, board - s * 0.72);
-      ctx.lineTo(x + s, board - s * 0.72);
-      ctx.lineTo(x + s, board + s * 0.45);
-      ctx.lineTo(x, board + s * 0.15);
-      ctx.lineTo(x - s, board + s * 0.45);
-      ctx.closePath();
-    }
-    ctx.fill();
-    const ink = profile.accentColor.l > 62 ? "#1a1024" : "#f7f4ff";
-    G.drawGlyph(ctx, profile.signGlyph, x, board, s * 1.35, ink);
-  }
-
-  function drawAliens(ctx, width, height, horizon, profile, rng, unit, difficulty, queue) {
-    const boost = DIFFICULTY_SCALE[difficulty] || 1;
-    const count = 1 + Math.floor(rng() * 3);
-    for (let i = 0; i < count; i++) {
-      const spot = bandPoint(rng, width, height, horizon, profile.drivingSide, photoDepth(rng), 14);
-      let color = ALIEN.blue;
-      if (profile.alienMix === "pink") color = ALIEN.pink;
-      if (profile.alienMix === "mixed") color = i % 2 === 0 ? ALIEN.blue : ALIEN.pink;
-      const scale = distanceScale(spot.y, height, horizon) * HEIGHT[profile.alienHeight] * boost * unit * 0.95;
-      const x = Math.max(28 * scale, Math.min(width - 28 * scale, spot.x));
-      queue(spot.y, () => drawAlien(ctx, x, spot.y, scale, color, profile));
-    }
-  }
-
-  function drawAlien(ctx, x, y, scale, color, profile) {
+  function crescentPath(ctx, x, y, r, d, rot) {
+    const h = Math.sqrt(Math.max(0, r * r - (d * d) / 4));
+    const t1 = Math.atan2(h, d / 2);
+    const p1 = Math.atan2(-h, -d / 2);
+    const p2 = Math.atan2(h, -d / 2);
     ctx.save();
     ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.beginPath();
-    ctx.ellipse(4, 2, 28, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 7;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(-8, -34);
-    ctx.lineTo(-14, -16);
-    ctx.lineTo(-18, 0);
-    ctx.moveTo(8, -34);
-    ctx.lineTo(15, -16);
-    ctx.lineTo(12, 0);
-    ctx.moveTo(-16, -58);
-    ctx.quadraticCurveTo(-28, -40, -22, -18);
-    ctx.moveTo(16, -58);
-    ctx.quadraticCurveTo(28, -42, 20, -16);
-    ctx.stroke();
-
-    const body = ctx.createLinearGradient(-18, -78, 20, -28);
-    body.addColorStop(0, "#ffffff");
-    body.addColorStop(0.22, color);
-    body.addColorStop(1, color);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(-16, -78);
-    ctx.quadraticCurveTo(-22, -48, -14, -30);
-    ctx.lineTo(14, -30);
-    ctx.quadraticCurveTo(22, -48, 16, -78);
+    ctx.rotate(rot);
+    ctx.moveTo(Math.cos(t1) * r, Math.sin(t1) * r);
+    ctx.arc(0, 0, r, t1, TAU - t1, false);
+    ctx.arc(d, 0, r, p1, p2, true);
     ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
-    ctx.beginPath();
-    ctx.ellipse(-8, -56, 8, 14, -0.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (profile.alienTrait === "spots") {
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      [[-8, -62], [6, -48], [-2, -36]].forEach(([sx, sy]) => {
-        ctx.beginPath();
-        ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
-        ctx.fill();
-      });
-    }
-
-    if (profile.alienTrait === "crest") {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(-4, -96);
-      ctx.lineTo(0, -122);
-      ctx.lineTo(8, -96);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(0, -90, 21, 0, Math.PI * 2);
-    ctx.fill();
-    drawEyes(ctx, profile.eyeCount);
-    ctx.fillStyle = body;
-    ctx.globalAlpha = 0.22;
-    ctx.beginPath();
-    ctx.ellipse(-7, -98, 6, 8, -0.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    if (profile.alienTrait === "horns") {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(-14, -100);
-      ctx.lineTo(-24, -122);
-      ctx.lineTo(-6, -104);
-      ctx.moveTo(14, -100);
-      ctx.lineTo(24, -122);
-      ctx.lineTo(6, -104);
-      ctx.fill();
-    } else if (profile.alienTrait === "antenna") {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(-8, -108);
-      ctx.quadraticCurveTo(-16, -124, -6, -132);
-      ctx.moveTo(8, -108);
-      ctx.quadraticCurveTo(16, -124, 6, -132);
-      ctx.stroke();
-      ctx.fillStyle = "#fff6ea";
-      ctx.beginPath();
-      ctx.arc(-6, -132, 3.5, 0, Math.PI * 2);
-      ctx.arc(6, -132, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.restore();
   }
 
-  function drawEyes(ctx, count) {
-    const layout = count === 1 ? [[0, -90, 8]] : count === 3 ? [[-12, -90, 4.4], [0, -94, 4.4], [12, -90, 4.4]] : [[-8, -91, 6], [8, -91, 6]];
-    layout.forEach(([x, y, radius]) => {
-      ctx.fillStyle = "#f4f8ff";
-      ctx.beginPath();
-      ctx.ellipse(x, y, radius, radius * 1.15, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#16141f";
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 0.38, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(x - radius * 0.25, y - radius * 0.28, radius * 0.16, 0, Math.PI * 2);
-      ctx.fill();
+  function drawMoons(ctx, cam, planet, rng, U) {
+    const rand = stableRand(`${planet.seed}|moons`);
+    const count = 1 + Math.floor(rand() * 3);
+    for (let i = 0; i < count; i++) {
+      const color = { h: rand() * 360, s: 55, l: 86 };
+      const r = (18 + rand() * 30) * U;
+      const x = cam.W * (0.08 + rng() * 0.84);
+      const y = cam.y0 * (0.12 + rng() * 0.45);
+      const full = rand() < 0.3;
+      const rot = -0.6 + rng() * 1.2;
+      if (full) {
+        paint(ctx, () => ctx.arc(x, y, r, 0, TAU), col(color), { ink: 1.4 * U, glaze: col(color, -18), edge: r * 0.3 });
+        for (let k = 0; k < 3; k++) {
+          paint(ctx, () => ctx.arc(x + (rand() - 0.5) * r, y + (rand() - 0.5) * r, r * (0.12 + rand() * 0.1), 0, TAU), col(color, -10, 0, 0.7));
+        }
+      } else {
+        paint(ctx, () => crescentPath(ctx, x, y, r, r * 0.7, rot), col(color), { ink: 1.4 * U, glaze: col(color, -16), edge: r * 0.2 });
+      }
+    }
+  }
+
+  function drawClouds(ctx, cam, pal, rng, U) {
+    const n = 2 + Math.floor(rng() * 4);
+    const color = mixC(pal.sky1, { h: 330, s: 60, l: 98 }, 0.78);
+    for (let i = 0; i < n; i++) {
+      const cx = rng() * cam.W;
+      const cy = cam.y0 * (0.12 + rng() * 0.55);
+      const size = (26 + rng() * 46) * U * (cy / cam.y0 + 0.4);
+      const blobs = [];
+      const parts = 4 + Math.floor(rng() * 4);
+      for (let k = 0; k < parts; k++) {
+        const t = k / (parts - 1) - 0.5;
+        blobs.push({
+          x: cx + t * size * 3.2,
+          y: cy - Math.cos(t * Math.PI) * size * 0.55 + rng() * size * 0.2,
+          r: size * (0.5 + Math.cos(t * Math.PI) * 0.45 + rng() * 0.15),
+        });
+      }
+      G.ink.blobUnion(ctx, blobs, color, 1.3 * U);
+    }
+  }
+
+  const STAR_PATTERNS = {
+    cross: [[0.5, 0.2], [0.5, 0.3], [0.5, 0.4], [0.4, 0.3], [0.6, 0.3]],
+    arc: [[0.25, 0.4], [0.33, 0.28], [0.44, 0.2], [0.56, 0.2], [0.67, 0.28], [0.75, 0.4]],
+    cluster: [[0.7, 0.2], [0.73, 0.24], [0.68, 0.27], [0.75, 0.18], [0.71, 0.3], [0.66, 0.22]],
+    ring: Array.from({ length: 8 }, (_, i) => [0.3 + Math.cos((i / 8) * TAU) * 0.08, 0.28 + Math.sin((i / 8) * TAU) * 0.1]),
+    scatter: [[0.15, 0.15], [0.4, 0.35], [0.62, 0.12], [0.85, 0.3], [0.3, 0.22], [0.75, 0.42]],
+  };
+
+  function sparkle(ctx, x, y, r, U) {
+    paint(ctx, () => {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU - Math.PI / 2;
+        const rr = i % 2 ? r * 0.3 : r;
+        if (i === 0) ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        else ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+    }, "#fffbe0", { ink: 1.1 * U });
+  }
+
+  function drawStars(ctx, cam, profile, rng, U) {
+    const pattern = STAR_PATTERNS[profile.starPattern] || STAR_PATTERNS.scatter;
+    const shiftX = (rng() - 0.5) * 0.2;
+    pattern.forEach(([px, py], i) => {
+      sparkle(ctx, cam.W * clamp(px + shiftX, 0.03, 0.97), cam.y0 * py * 1.4, (7 + (i % 3) * 3) * U, U);
     });
   }
 
-  function drawPebbles(ctx, width, height, horizon, profile, rng, unit) {
-    ctx.fillStyle = hsla(shade(profile.groundColor, -16), 0.8);
-    for (let i = 0; i < 8; i++) {
-      const y = horizon + (height - horizon) * (0.2 + rng() * 0.55);
-      const x = sideX(rng, width, height, horizon, profile.drivingSide, y, 4);
-      ctx.beginPath();
-      ctx.ellipse(x, y, (6 + rng() * 10) * unit, (3 + rng() * 4) * unit, rng(), 0, Math.PI * 2);
-      ctx.fill();
+  function drawSkyEvent(ctx, cam, profile, rng, U) {
+    const kind = profile.skyEvent;
+    const x = cam.W * (0.18 + rng() * 0.64);
+    const y = cam.y0 * (0.25 + rng() * 0.25);
+    const R = (40 + rng() * 30) * U;
+    const c = profile.accentColor;
+    const iw = 1.6 * U;
+    if (kind === "ring") {
+      paint(ctx, () => ctx.ellipse(x, y, R * 2, R * 0.5, -0.25, Math.PI, TAU), "rgba(0,0,0,0)", { ink: iw * 3 });
+      paint(ctx, () => ctx.arc(x, y, R, 0, TAU), col(c, 10), { ink: iw, glaze: col(c, -20), edge: R * 0.4 });
+      stroke(ctx, () => ctx.ellipse(x, y, R * 2, R * 0.5, -0.25, Math.PI, TAU), col(c, 30), iw * 2);
+      stroke(ctx, () => ctx.ellipse(x, y, R * 2, R * 0.5, -0.25, 0, Math.PI), INK, iw * 3);
+      stroke(ctx, () => ctx.ellipse(x, y, R * 2, R * 0.5, -0.25, 0, Math.PI), col(c, 30), iw * 2);
+    } else if (kind === "eye") {
+      paint(ctx, () => {
+        ctx.moveTo(x - R * 1.6, y);
+        ctx.quadraticCurveTo(x, y - R * 1.4, x + R * 1.6, y);
+        ctx.quadraticCurveTo(x, y + R * 1.4, x - R * 1.6, y);
+      }, "#fff8fb", { ink: iw * 1.4 });
+      paint(ctx, () => ctx.arc(x + R * 0.15, y, R * 0.62, 0, TAU), col(c), { ink: iw });
+      paint(ctx, () => ctx.arc(x + R * 0.2, y, R * 0.3, 0, TAU), INK);
+      paint(ctx, () => ctx.arc(x, y - R * 0.2, R * 0.13, 0, TAU), "#fff");
+      stroke(ctx, () => {
+        for (let i = 0; i < 5; i++) {
+          const t = -0.8 + i * 0.4;
+          ctx.moveTo(x + t * R, y - R * 0.68 + Math.abs(t) * R * 0.25);
+          ctx.lineTo(x + t * R * 1.3, y - R * 1.05);
+        }
+      }, INK, iw);
+    } else if (kind === "jelly") {
+      for (let i = 0; i < 6; i++) {
+        const tx = x - R * 0.7 + (i / 5) * R * 1.4;
+        stroke(ctx, () => {
+          ctx.moveTo(tx, y);
+          ctx.bezierCurveTo(tx - R * 0.3, y + R * 0.8, tx + R * 0.3, y + R * 1.2, tx - R * 0.1, y + R * 1.9);
+        }, col(c, 10, 0, 0.8), iw * 1.6);
+      }
+      paint(ctx, () => {
+        ctx.moveTo(x - R, y + R * 0.1);
+        ctx.bezierCurveTo(x - R, y - R * 1.2, x + R, y - R * 1.2, x + R, y + R * 0.1);
+        for (let i = 0; i < 6; i++) {
+          const a = x + R - ((i + 0.5) / 6) * R * 2;
+          ctx.quadraticCurveTo(a, y + R * 0.4, a - R / 6, y + R * 0.1);
+        }
+        ctx.closePath();
+      }, col(c, 18, 0, 0.85), { ink: iw, glaze: col(c, -10), edge: R * 0.3 });
+    } else if (kind === "shard") {
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU + rng() * 0.4;
+        const d = R * (i === 0 ? 0 : 0.9 + rng() * 0.8);
+        const sx = x + Math.cos(a) * d;
+        const sy = y + Math.sin(a) * d * 0.7;
+        const r = R * (i === 0 ? 0.8 : 0.25 + rng() * 0.25);
+        paint(ctx, () => {
+          for (let k = 0; k < 5; k++) {
+            const b = (k / 5) * TAU + rng() * 0.5;
+            const rr = r * (0.7 + rng() * 0.4);
+            if (k === 0) ctx.moveTo(sx + Math.cos(b) * rr, sy + Math.sin(b) * rr);
+            else ctx.lineTo(sx + Math.cos(b) * rr, sy + Math.sin(b) * rr);
+          }
+          ctx.closePath();
+        }, col(c, (rng() - 0.5) * 14), { ink: iw, glaze: col(c, -24), edge: r * 0.3 });
+      }
+    } else if (kind === "spiral") {
+      const colors = [c, shade(c, 16), { h: (c.h + 60) % 360, s: 70, l: 78 }, { h: (c.h + 180) % 360, s: 60, l: 80 }];
+      for (let k = 0; k < 4; k++) {
+        stroke(ctx, () => {
+          for (let i = 0; i <= 120; i++) {
+            const t = i / 120;
+            const a = t * TAU * 2.2 + (k * TAU) / 4;
+            const r = R * 0.1 + t * R * 3.2;
+            const px = x + Math.cos(a) * r * 1.3;
+            const py = y + Math.sin(a) * r * 0.6;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+        }, col(colors[k], 0, 0, 0.5), R * 0.28);
+      }
+      stroke(ctx, () => {
+        for (let i = 0; i <= 120; i++) {
+          const t = i / 120;
+          const a = t * TAU * 2.2;
+          const r = R * 0.1 + t * R * 3.2;
+          const px = x + Math.cos(a) * r * 1.3;
+          const py = y + Math.sin(a) * r * 0.6;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+      }, col(INK === "#1b1033" ? { h: 260, s: 50, l: 20 } : c, 0, 0, 0.5), iw);
+    } else {
+      const pts = [];
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
+        pts.push({ x: x - R * 3 + t * R * 6, y: y + Math.sin(t * TAU * 1.3) * R * 0.6 });
+      }
+      pts.forEach((p, i) => {
+        if (i % 2) return;
+        const r = R * (0.28 - Math.abs(i / 40 - 0.5) * 0.3);
+        paint(ctx, () => ctx.arc(p.x, p.y, r, 0, TAU), col(c, i % 4 ? 8 : -4), { ink: iw });
+      });
+      const head = pts[pts.length - 1];
+      paint(ctx, () => ctx.arc(head.x + R * 0.2, head.y, R * 0.34, 0, TAU), col(c, 4), { ink: iw });
+      paint(ctx, () => ctx.arc(head.x + R * 0.32, head.y - R * 0.08, R * 0.11, 0, TAU), "#fff", { ink: iw * 0.7 });
     }
   }
 
-  function drawWeather(ctx, width, height, horizon, profile, rng, unit, difficulty) {
-    if (difficulty === "hard") drawHaze(ctx, width, horizon, profile, unit, 0.1);
-    if (profile.weather === "mist") drawHaze(ctx, width, horizon, profile, unit, 0.24);
-    if (profile.weather === "dust") {
-      ctx.strokeStyle = hsla(shade(profile.groundColor, 20), 0.35);
-      ctx.lineWidth = 2 * unit;
-      for (let i = 0; i < 7; i++) {
-        const y = horizon * 0.75 + rng() * (height - horizon);
+  // ---------- horizon ----------
+
+  function horizonProfile(cam, planet, loc) {
+    const t = planet.terrain;
+    const eCam = Math.max(0, G.elevationAt(t, loc.x, loc.y));
+    const camH = eCam * VERT + cam.ch + 6;
+    const bands = { far: [], mid: [], near: [] };
+    const meta = { far: [], mid: [], near: [] };
+    const waterY = [];
+    const waterD = [];
+    for (let i = 0; i <= COLUMNS; i++) {
+      const sx = (i / COLUMNS) * cam.W;
+      const ang = Math.atan((sx - cam.cx) / cam.f);
+      const cosA = Math.cos(ang);
+      const dir = loc.heading + ang;
+      const dx = Math.cos(dir);
+      const dy = Math.sin(dir);
+      const top = { far: cam.y0, mid: cam.y0, near: cam.y0 };
+      const info = { far: { e: 0, m: 0.5 }, mid: { e: 0, m: 0.5 }, near: { e: 0, m: 0.5 } };
+      let wd = 0;
+      for (let d = 3; d < 520; d *= 1.045) {
+        const mx = loc.x + dx * d;
+        const my = loc.y + dy * d;
+        const outside = mx < 0 || my < 0 || mx > 1000 || my > 1000;
+        const w = outside ? G.WATER.SEA : G.waterAt(t, mx, my);
+        if (w === G.WATER.SEA || w === G.WATER.LAKE) {
+          if (!wd) wd = d;
+          continue;
+        }
+        const e = Math.max(0, G.elevationAt(t, mx, my));
+        const D = d * FAR_M * cosA;
+        const y = cam.y0 - ((e * VERT - camH) * cam.f) / D;
+        const band = d < 16 ? "near" : d < 75 ? "mid" : "far";
+        if (y < top[band]) {
+          top[band] = y;
+          info[band] = { e, m: G.moistureAt(t, mx, my) };
+        }
+      }
+      const cap = cam.H * 0.3;
+      const exaggerate = { far: 2.8, mid: 2.1, near: 1.1 };
+      ["far", "mid", "near"].forEach((band) => {
+        const rise = Math.max(0, cam.y0 - top[band]) * exaggerate[band];
+        bands[band].push(cam.y0 - cap * (1 - Math.exp(-rise / cap)));
+        meta[band].push(info[band]);
+      });
+      waterD.push(wd);
+      waterY.push(wd && wd < 300 ? cam.y0 + (camH * cam.f) / (wd * FAR_M * cosA) : null);
+    }
+    return { bands, meta, waterY, waterD, camH };
+  }
+
+  function smoothPath(ctx, xs, ys) {
+    ctx.lineTo(xs[0], ys[0]);
+    for (let i = 1; i < xs.length - 1; i++) {
+      ctx.quadraticCurveTo(xs[i], ys[i], (xs[i] + xs[i + 1]) / 2, (ys[i] + ys[i + 1]) / 2);
+    }
+    ctx.lineTo(xs[xs.length - 1], ys[ys.length - 1]);
+  }
+
+  function drawBand(ctx, cam, ys, info, color, haze, opts, rng, U) {
+    if (!ys.some((y) => y < cam.y0 - 1)) return;
+    const xs = ys.map((_, i) => (i / COLUMNS) * cam.W);
+    const minY = Math.min(...ys);
+    const build = () => {
+      ctx.moveTo(0, cam.y0 + 3);
+      smoothPath(ctx, xs, ys);
+      ctx.lineTo(cam.W, cam.y0 + 3);
+      ctx.closePath();
+    };
+    const top = opts.snow && info.some((m) => m.e > 0.74) ? mixC(color, { h: 220, s: 30, l: 97 }, 0.65) : shade(color, 8);
+    const g = ctx.createLinearGradient(0, minY, 0, cam.y0);
+    g.addColorStop(0, col(mixC(top, haze, opts.haze * 0.6)));
+    g.addColorStop(1, col(mixC(color, haze, opts.haze)));
+    paint(ctx, build, g, { glaze: col(color, -16, 0), glazeAlpha: 0.25, edge: 8 * U });
+    if (opts.snow) {
+      let run = [];
+      const flush = () => {
+        if (run.length >= 2) {
+          paint(ctx, () => {
+            ctx.moveTo(xs[run[0]], ys[run[0]]);
+            run.forEach((i) => ctx.lineTo(xs[i], ys[i]));
+            for (let k = run.length - 1; k >= 0; k--) {
+              const i = run[k];
+              const depth = (cam.y0 - ys[i]) * (k % 2 ? 0.22 : 0.34);
+              ctx.lineTo(xs[i], ys[i] + depth);
+            }
+            ctx.closePath();
+          }, col(mixC({ h: 220, s: 40, l: 97 }, haze, opts.haze * 0.4)), { ink: 0.8 * U });
+        }
+        run = [];
+      };
+      ys.forEach((y, i) => {
+        if (info[i].e > 0.7 && y < cam.y0 - 6 * U) run.push(i);
+        else flush();
+      });
+      flush();
+    }
+    stroke(ctx, () => {
+      ctx.moveTo(xs[0], ys[0]);
+      smoothPath(ctx, xs, ys);
+    }, `rgba(27, 16, 51, ${opts.inkAlpha})`, opts.ink * U);
+    if (opts.trees) {
+      const treeColor = mixC(shade(color, -10), haze, opts.haze * 0.7);
+      for (let i = 1; i < ys.length - 1; i += 2) {
+        const y = ys[i];
+        if (y > cam.y0 - 2 || info[i].e > 0.6 || info[i].m < 0.42 || rng() < 0.35) continue;
+        const x = xs[i] + (rng() - 0.5) * (cam.W / COLUMNS);
+        const size = opts.trees * U * (0.7 + rng() * 0.6);
+        if (rng() < 0.5) {
+          stroke(ctx, () => {
+            ctx.moveTo(x, y + size * 0.3);
+            ctx.lineTo(x, y - size);
+          }, `rgba(27, 16, 51, ${opts.inkAlpha})`, Math.max(1, U));
+          paint(ctx, () => ctx.arc(x, y - size, size * 0.55, 0, TAU), col(treeColor), { ink: opts.ink * U * 0.8 });
+        } else {
+          paint(ctx, () => {
+            ctx.moveTo(x - size * 0.5, y + 1);
+            ctx.lineTo(x, y - size * 1.5);
+            ctx.lineTo(x + size * 0.5, y + 1);
+            ctx.closePath();
+          }, col(treeColor), { ink: opts.ink * U * 0.8 });
+        }
+      }
+    }
+  }
+
+  function drawSea(ctx, cam, hz, pal, rng, U) {
+    if (!hz.waterY.some((y) => y)) return;
+    const xs = hz.waterY.map((_, i) => (i / COLUMNS) * cam.W);
+    const ys = hz.waterY.map((y) => (y ? Math.min(cam.H, y) : cam.y0));
+    const seaColor = mixC({ h: 192, s: 70, l: 62 }, pal.sky1, 0.3);
+    const g = ctx.createLinearGradient(0, cam.y0, 0, Math.max(...ys) + 1);
+    g.addColorStop(0, col(seaColor, 12));
+    g.addColorStop(1, col(seaColor, -8));
+    paint(ctx, () => {
+      ctx.moveTo(0, cam.y0);
+      ctx.lineTo(cam.W, cam.y0);
+      for (let i = xs.length - 1; i >= 0; i--) ctx.lineTo(xs[i], ys[i]);
+      ctx.closePath();
+    }, g);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.lineWidth = 1.2 * U;
+    for (let i = 0; i < 40; i++) {
+      const k = Math.floor(rng() * xs.length);
+      if (!hz.waterY[k]) continue;
+      const y = cam.y0 + (ys[k] - cam.y0) * rng();
+      const len = (4 + rng() * 14) * U * ((y - cam.y0) / (ys[k] - cam.y0 + 1) + 0.3);
+      ctx.beginPath();
+      ctx.moveTo(xs[k], y);
+      ctx.lineTo(xs[k] + len, y);
+      ctx.stroke();
+    }
+  }
+
+  function drawLandmarks(ctx, cam, profile, pal, rng, U) {
+    const kind = profile.terrain;
+    const color = mixC(pal.rock, pal.sky1, 0.25);
+    const n = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const x = cam.W * (i < n / 2 ? 0.04 + rng() * 0.3 : 0.66 + rng() * 0.3);
+      const y = cam.y0 + 2;
+      const h = (40 + rng() * 70) * U;
+      const w = (30 + rng() * 60) * U;
+      const c = shade(color, (rng() - 0.5) * 10);
+      const build = () => {
+        if (kind === "mesa") {
+          ctx.moveTo(x - w, y);
+          ctx.lineTo(x - w * 0.7, y - h);
+          ctx.lineTo(x + w * 0.7, y - h);
+          ctx.lineTo(x + w, y);
+        } else if (kind === "spire") {
+          ctx.moveTo(x - w * 0.3, y);
+          ctx.quadraticCurveTo(x - w * 0.15, y - h, x, y - h * 1.8);
+          ctx.quadraticCurveTo(x + w * 0.15, y - h, x + w * 0.3, y);
+        } else if (kind === "dune") {
+          ctx.moveTo(x - w * 2, y);
+          ctx.quadraticCurveTo(x - w * 0.5, y - h * 0.8, x + w * 0.2, y - h * 0.55);
+          ctx.quadraticCurveTo(x + w, y - h * 0.4, x + w * 2, y);
+        } else {
+          ctx.moveTo(x - w * 1.4, y);
+          for (let k = 0; k <= 6; k++) {
+            ctx.lineTo(x - w * 1.4 + (k / 6) * w * 2.8, y - h * (k % 2 ? 1 : 0.55) * (1 - Math.abs(k / 6 - 0.5)));
+          }
+          ctx.lineTo(x + w * 1.4, y);
+        }
+        ctx.closePath();
+      };
+      paint(ctx, build, col(c), { ink: 1.3 * U, glaze: col(c, -18), edge: w * 0.2 });
+      if (kind === "mesa") {
+        stroke(ctx, () => {
+          for (let k = 1; k < 4; k++) {
+            const yy = y - h * (k / 4);
+            ctx.moveTo(x - w * (1 - 0.3 * (k / 4)) + 3 * U, yy);
+            ctx.lineTo(x + w * (1 - 0.3 * (k / 4)) - 3 * U, yy);
+          }
+        }, col(c, -20, 0, 0.6), U);
+      }
+    }
+  }
+
+  // ---------- ground ----------
+
+  function drawGround(ctx, cam, hz, pal, rng, U) {
+    const tops = hz.waterY.map((y) => (y ? Math.min(cam.H, Math.max(y, cam.y0)) : cam.y0));
+    const xs = tops.map((_, i) => (i / COLUMNS) * cam.W);
+    const build = () => {
+      ctx.moveTo(0, cam.H);
+      for (let i = 0; i < xs.length; i++) ctx.lineTo(xs[i], tops[i]);
+      ctx.lineTo(cam.W, cam.H);
+      ctx.closePath();
+    };
+    const g = ctx.createLinearGradient(0, cam.y0, 0, cam.H);
+    g.addColorStop(0, col(pal.groundFar, 6));
+    g.addColorStop(0.18, col(mixC(pal.groundFar, pal.ground, 0.7)));
+    g.addColorStop(1, col(pal.ground, -6));
+    paint(ctx, build, g);
+    ctx.save();
+    ctx.beginPath();
+    build();
+    ctx.clip();
+    for (let i = 0; i < 22; i++) {
+      const y = cam.y0 + Math.pow(rng(), 0.7) * (cam.H - cam.y0);
+      const x = rng() * cam.W;
+      const r = (40 + rng() * 160) * U * ((y - cam.y0) / (cam.H - cam.y0) + 0.25);
+      const tint = [pal.plantA, pal.plantB, shade(pal.ground, 10), shade(pal.ground, -12)][i % 4];
+      const bloom = ctx.createRadialGradient(x, y, 0, x, y, r);
+      bloom.addColorStop(0, col(tint, 0, 0, 0.3));
+      bloom.addColorStop(1, col(tint, 0, 0, 0));
+      ctx.fillStyle = bloom;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 1.6, r * 0.5, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    stroke(ctx, () => {
+      ctx.moveTo(0, tops[0]);
+      for (let i = 1; i < xs.length; i++) ctx.lineTo(xs[i], tops[i]);
+    }, "rgba(27, 16, 51, 0.45)", 1.1 * U);
+  }
+
+  function drawHatching(ctx, cam, road, halfW, pal, rng, U, count) {
+    ctx.lineCap = "round";
+    for (let i = 0; i < count; i++) {
+      const z = 2.6 + Math.pow(rng(), 2.2) * 90;
+      const spread = (z * cam.W) / cam.f;
+      const x = cam.lane + (rng() - 0.5) * spread * 1.1;
+      if (Math.abs(x - road.x(z)) < halfW + 0.3) continue;
+      const p = cam.p(x, z, 0);
+      const len = Math.max(1.5 * U, p.s * 0.18);
+      ctx.strokeStyle = col(rng() < 0.5 ? pal.plantA : shade(pal.ground, -18), 0, 0, 0.55);
+      ctx.lineWidth = Math.max(0.6 * U, p.s * 0.025);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - len * 0.2, p.y - len);
+      ctx.moveTo(p.x + len * 0.3, p.y);
+      ctx.lineTo(p.x + len * 0.5, p.y - len * 0.8);
+      ctx.stroke();
+    }
+  }
+
+  function drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U) {
+    const kind = profile.groundPattern;
+    if (kind === "plain") return;
+    ctx.strokeStyle = col(pal.ground, -24, 0, 0.55);
+    ctx.lineWidth = 1.1 * U;
+    ctx.lineCap = "round";
+    [-1, 1].forEach((side) => {
+      if (kind === "rippled") {
+        for (let z = 3; z < 40; z *= 1.18) {
+          ctx.beginPath();
+          for (let k = 0; k <= 10; k++) {
+            const x = road.x(z) + side * (halfW + 0.5 + k * 1.2);
+            const p = cam.p(x, z + Math.sin(k * 0.9) * z * 0.04, 0);
+            if (k === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          }
+          ctx.stroke();
+        }
+      } else if (kind === "cracked") {
+        for (let i = 0; i < 14; i++) {
+          let z = 3 + rng() * 25;
+          let x = road.x(z) + side * (halfW + 0.6 + rng() * 9);
+          ctx.beginPath();
+          let p = cam.p(x, z, 0);
+          ctx.moveTo(p.x, p.y);
+          for (let k = 0; k < 4; k++) {
+            x += (rng() - 0.5) * 1.6;
+            z += (rng() - 0.3) * 1.4;
+            p = cam.p(x, z, 0);
+            ctx.lineTo(p.x, p.y);
+          }
+          ctx.stroke();
+        }
+      } else if (kind === "hex") {
+        for (let row = 0; row < 12; row++) {
+          const z = 3 + row * 1.3;
+          for (let c = 0; c < 6; c++) {
+            const x = road.x(z) + side * (halfW + 0.8 + c * 1.5 + (row % 2) * 0.75);
+            ctx.beginPath();
+            for (let k = 0; k <= 6; k++) {
+              const a = (k / 6) * TAU;
+              const p = cam.p(x + Math.cos(a) * 0.62, z + Math.sin(a) * 0.62, 0);
+              if (k === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+          }
+        }
+      }
+    });
+  }
+
+  // ---------- road ----------
+
+  function roadSamples(cam, zMax) {
+    const zNear = ((cam.ch * cam.f) / (cam.H - cam.y0)) * 0.8;
+    const zs = [];
+    for (let i = 0; i <= 80; i++) zs.push(zNear * Math.pow(zMax / zNear, i / 80));
+    return zs;
+  }
+
+  function strip(ctx, cam, road, zs, a, b, y) {
+    zs.forEach((z, i) => {
+      const p = cam.p(road.x(z) + a, z, y || 0);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    for (let i = zs.length - 1; i >= 0; i--) {
+      const p = cam.p(road.x(zs[i]) + b, zs[i], y || 0);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+  }
+
+  function edgeLine(ctx, cam, road, zs, off, wob) {
+    zs.forEach((z, i) => {
+      const p = cam.p(road.x(z) + off + (wob ? wob[i] : 0), z, 0);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+  }
+
+  function drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax) {
+    const zs = roadSamples(cam, zMax);
+    const wobL = zs.map(() => (rng() - 0.5) * 0.25);
+    const wobR = zs.map(() => (rng() - 0.5) * 0.25);
+    const city = kind === "city";
+    const build = () => {
+      zs.forEach((z, i) => {
+        const p = cam.p(road.x(z) - halfW + (city ? 0 : wobL[i]), z, 0);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      for (let i = zs.length - 1; i >= 0; i--) {
+        const p = cam.p(road.x(zs[i]) + halfW + (city ? 0 : wobR[i]), zs[i], 0);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+    };
+    const farY = cam.p(0, zMax, 0).y;
+    if (city) {
+      [-1, 1].forEach((side) => {
+        const walk = { h: 18 + side * 8, s: 26, l: 80 };
+        paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 3.2), 0.15), col(walk), { glaze: col(walk, -16), edge: 6 * U });
+        ctx.strokeStyle = col(walk, -22, 0, 0.6);
+        ctx.lineWidth = 0.8 * U;
         ctx.beginPath();
-        ctx.moveTo(rng() * width * 0.3, y);
-        ctx.lineTo(width * (0.4 + rng() * 0.5), y - 8 * unit);
+        for (let z = zs[0]; z < 60; z += 1.6) {
+          const a = cam.p(road.x(z) + side * halfW, z, 0.15);
+          const b = cam.p(road.x(z) + side * (halfW + 3.2), z, 0.15);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
         ctx.stroke();
+      });
+      const asphalt = { h: 255, s: 14, l: 44 };
+      const g = ctx.createLinearGradient(0, farY, 0, cam.H);
+      g.addColorStop(0, col(mixC(asphalt, pal.sky1, 0.4)));
+      g.addColorStop(1, col(asphalt, -6));
+      paint(ctx, build, g, { glaze: col(asphalt, -14), edge: 10 * U });
+      [-1, 1].forEach((side) => {
+        stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.6 * U);
+      });
+      ctx.fillStyle = col(profile.pathLineColor, 10);
+      for (let z = 3; z < zMax * 0.6; z += 6) {
+        ctx.beginPath();
+        strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
+        ctx.fill();
+      }
+      if (rng() < 0.5) {
+        const z0 = 7 + rng() * 6;
+        ctx.fillStyle = "rgba(255, 250, 245, 0.85)";
+        for (let k = -halfW + 0.4; k < halfW - 0.4; k += 0.9) {
+          ctx.beginPath();
+          const a = cam.p(road.x(z0) + k, z0, 0);
+          const b = cam.p(road.x(z0) + k + 0.45, z0, 0);
+          const c = cam.p(road.x(z0 + 2.4) + k + 0.45, z0 + 2.4, 0);
+          const d = cam.p(road.x(z0 + 2.4) + k, z0 + 2.4, 0);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.lineTo(c.x, c.y);
+          ctx.lineTo(d.x, d.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    } else {
+      const dirt = pal.dirt;
+      const g = ctx.createLinearGradient(0, farY, 0, cam.H);
+      g.addColorStop(0, col(mixC(dirt, pal.sky1, 0.35), 6));
+      g.addColorStop(1, col(dirt, -4));
+      paint(ctx, build, g, { glaze: col(dirt, -22), glazeAlpha: 0.4, edge: 14 * U });
+      [-0.45, 0.45].forEach((k) => {
+        ctx.fillStyle = col(dirt, -16, 0, 0.42);
+        ctx.beginPath();
+        strip(ctx, cam, road, zs, k * halfW - 0.2, k * halfW + 0.2);
+        ctx.fill();
+      });
+      if (roadCls === "minor") {
+        ctx.fillStyle = col(pal.plantA, 6, 0, 0.5);
+        ctx.beginPath();
+        strip(ctx, cam, road, zs, -0.25, 0.25);
+        ctx.fill();
+      }
+      for (let i = 0; i < 3; i++) {
+        const z = 4 + rng() * 22;
+        const x = road.x(z) + (rng() < 0.5 ? -0.45 : 0.45) * halfW;
+        const p = cam.p(x, z, 0);
+        const rx = p.s * (0.4 + rng() * 0.5);
+        const ry = rx * (cam.ch / z);
+        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, { h: 200, s: 60, l: 80 }, 0.4)), { ink: inkW(p.s, U) * 0.7 });
+        paint(ctx, () => ctx.ellipse(p.x - rx * 0.25, p.y - ry * 0.2, rx * 0.35, ry * 0.25, 0, 0, TAU), "rgba(255,255,255,0.6)");
+      }
+      for (let i = 0; i < 40; i++) {
+        const z = 2.6 + Math.pow(rng(), 2) * 30;
+        const x = road.x(z) + (rng() - 0.5) * halfW * 1.9;
+        const p = cam.p(x, z, 0);
+        const r = Math.max(0.6 * U, p.s * (0.04 + rng() * 0.05));
+        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.3, r, 0, 0, TAU), col(dirt, -18 + rng() * 30), { ink: Math.max(0.5, U * 0.6) });
+      }
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW, wobL), INK, 1.5 * U);
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW, wobR), INK, 1.5 * U);
+    }
+    drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax);
+    if (!city) {
+      for (let i = 0; i < 46; i++) {
+        const z = 2.6 + Math.pow(rng(), 1.8) * 40;
+        const side = rng() < 0.5 ? -1 : 1;
+        const p = cam.p(road.x(z) + side * (halfW + (rng() - 0.3) * 0.5), z, 0);
+        P.tuft(ctx, p.x, p.y, p.s, 0.35 + rng() * 0.3, pal.plantA, rng, U);
+      }
+    }
+  }
+
+  function drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax) {
+    const style = profile.pathStyle;
+    const c = profile.pathLineColor;
+    if (style === "plates") {
+      ctx.strokeStyle = "rgba(27, 16, 51, 0.4)";
+      ctx.lineWidth = 1 * U;
+      ctx.beginPath();
+      for (let z = zs[0]; z < Math.min(80, zMax); z += 2.4) {
+        const a = cam.p(road.x(z) - halfW, z, 0);
+        const b = cam.p(road.x(z) + halfW, z, 0);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = col(c, 10, -30, 0.18);
+      for (let z = zs[0]; z < Math.min(80, zMax); z += 4.8) {
+        ctx.beginPath();
+        strip(ctx, cam, road, [z, z + 1.2, z + 2.4], -halfW, halfW);
+        ctx.fill();
+      }
+    } else if (style === "glow") {
+      ctx.save();
+      ctx.shadowColor = col(c, 10);
+      ctx.shadowBlur = 10 * U;
+      ctx.fillStyle = col(c, 14);
+      for (let z = 3; z < zMax * 0.5; z += 5) {
+        ctx.beginPath();
+        strip(ctx, cam, road, [z, z + 1, z + 2.2], -0.12, 0.12);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (style === "rails") {
+      ctx.strokeStyle = col({ h: 30, s: 30, l: 40 }, 0, 0, 0.7);
+      ctx.lineWidth = 1.2 * U;
+      ctx.beginPath();
+      for (let z = zs[0]; z < 40; z += 1.1) {
+        const a = cam.p(road.x(z) - halfW * 0.7, z, 0);
+        const b = cam.p(road.x(z) + halfW * 0.7, z, 0);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+      [-0.5, 0.5].forEach((k) => {
+        stroke(ctx, () => edgeLine(ctx, cam, road, zs, k * halfW), INK, 3.4 * U);
+        stroke(ctx, () => edgeLine(ctx, cam, road, zs, k * halfW), col(c, 18, -30), 1.8 * U);
+      });
+    }
+  }
+
+  // ---------- population ----------
+
+  function wallPalette(profile, rng, shownBuilding) {
+    if (shownBuilding) return shade(profile.wallColor, (rng() - 0.5) * 12);
+    return { h: rng() * 360, s: 45 + rng() * 25, l: 66 + rng() * 14 };
+  }
+
+  function glyphRun(rng, n) {
+    return Array.from({ length: n }, () => Math.floor(rng() * G.GLYPH_COUNT));
+  }
+
+  function pickColor(profile, rng) {
+    if (profile.alienMix === "mixed") return rng() < 0.5 ? "pink" : "blue";
+    return profile.alienMix;
+  }
+
+  function addAlien(queue, cam, road, halfW, profile, rng, U, z, x) {
+    queue.push({
+      z,
+      draw: (ctx) => {
+        const p = cam.p(x, z, 0);
+        P.alien(ctx, p.x, p.y, p.s, {
+          profile,
+          color: pickColor(profile, rng),
+          variant: Math.floor(rng() * 3),
+          pose: rng() < 0.3 ? 1 : 0,
+          flip: rng() < 0.5,
+          tilt: (rng() - 0.5) * 0.12,
+          scale: 0.9 + rng() * 0.2,
+        }, U);
+      },
+    });
+  }
+
+  function addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, allowMeta) {
+    const meta = shown.vegetation && allowMeta && rng() < 0.45;
+    const r = rng();
+    queue.push({
+      z,
+      draw: (ctx) => {
+        const p = cam.p(x, z, 0);
+        if (p.x < -p.s * 8 || p.x > cam.W + p.s * 8) return;
+        const vc = shade(profile.vegetationColor, (rng() - 0.5) * 10);
+        if (meta) {
+          const kind = profile.vegetation;
+          if (kind === "mushroom") P.mushroom(ctx, p.x, p.y, p.s, 2.4 + rng() * 4.5, vc, rng, U);
+          else if (kind === "palm") P.palm(ctx, p.x, p.y, p.s, 6 + rng() * 5, vc, pal.trunk, rng, U);
+          else if (kind === "tentacle") P.tentacle(ctx, p.x, p.y, p.s, 3 + rng() * 4, vc, rng, U);
+          else if (kind === "eyestalk") P.eyestalk(ctx, p.x, p.y, p.s, 1.6 + rng() * 2, vc, rng, U);
+          else if (kind === "bulb") P.bulb(ctx, p.x, p.y, p.s, 2 + rng() * 2.5, vc, rng, U);
+          else if (kind === "spiralfern") P.spiralFern(ctx, p.x, p.y, p.s, 1.6 + rng() * 1.8, vc, rng, U);
+          else if (kind === "balloon") P.balloonPod(ctx, p.x, p.y, p.s, 3 + rng() * 3.5, vc, rng, U);
+          else P.crystal(ctx, p.x, p.y, p.s, 1.4 + rng() * 2.6, vc, rng, U);
+          return;
+        }
+        const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
+        const plant = [pal.plantA, pal.plantB, pal.plantC][Math.floor(rng() * 3)];
+        if (biome === "rock" || biome === "snow" || (biome === "highland" && r < 0.5)) {
+          P.boulder(ctx, p.x, p.y, p.s, 0.4 + rng() * 1.4, pal.rock, rng, U);
+        } else if ((biome === "beach" && r < 0.12) || (biome === "dry" && r < 0.1)) {
+          P.tubeCoral(ctx, p.x, p.y, p.s, 0.8 + rng() * 1.3, { h: 5 + rng() * 40, s: 75, l: 66 }, rng, U);
+        } else if (r < (lush ? 0.3 : 0.15)) {
+          const t = rng();
+          if (t < 0.62) P.tree(ctx, p.x, p.y, p.s, 4.5 + rng() * 5, plant, pal.trunk, rng, U);
+          else if (t < 0.82) P.cottonTree(ctx, p.x, p.y, p.s, 4 + rng() * 3, { h: [320, 200, 270][Math.floor(rng() * 3)], s: 60, l: 76 }, pal.trunk, rng, U);
+          else P.jellyTree(ctx, p.x, p.y, p.s, 4.5 + rng() * 3.5, { h: 180 + rng() * 40, s: 70, l: 72 }, pal.trunk, rng, U);
+        } else if (biome === "jungle" && r < 0.38) {
+          P.pitcher(ctx, p.x, p.y, p.s, 0.9 + rng() * 1.1, { h: rng() < 0.5 ? 340 : 95, s: 55, l: 52 }, rng, U);
+        } else if (r < 0.62) {
+          P.bush(ctx, p.x, p.y, p.s, 0.6 + rng() * 1.1, plant, rng, U);
+        } else if (r < 0.86) {
+          P.fern(ctx, p.x, p.y, p.s, 0.8 + rng() * 1.2, plant, rng, U);
+        } else if (r < 0.94) {
+          P.boulder(ctx, p.x, p.y, p.s, 0.3 + rng() * 0.7, pal.rock, rng, U);
+        } else {
+          P.flower(ctx, p.x, p.y, p.s, 0.5 + rng() * 0.4, { h: rng() * 360, s: 80, l: 70 }, rng, U);
+        }
+      },
+    });
+  }
+
+  function addPoles(queue, cam, road, halfW, profile, rng, U, side, offset) {
+    const anchors = [];
+    const zs = [];
+    for (let z = 5 + rng() * 6; z < 220; z += 26) zs.push(z);
+    zs.forEach((z) => {
+      const x = road.x(z) + side * (halfW + offset);
+      queue.push({
+        z,
+        draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          if (p.x < -200 || p.x > cam.W + 200) return;
+          anchors.push({ z, pts: P.pole(ctx, cam, x, z, profile, U, true) });
+        },
+      });
+    });
+    queue.push({
+      z: zs[0] - 0.01,
+      draw: (ctx) => {
+        anchors.sort((a, b) => a.z - b.z);
+        if (anchors.length > 1) P.wires(ctx, anchors.map((a) => a.pts), U);
+      },
+    });
+  }
+
+  function addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind) {
+    if (shown.pole) addPoles(queue, cam, road, halfW, profile, rng, U, rng() < 0.5 ? -1 : 1, kind === "city" ? 0.5 : 1.4);
+    if (shown.sign) {
+      const z = 7 + rng() * 9;
+      const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + (kind === "city" ? 0.6 : 0.9));
+      queue.push({ z, draw: (ctx) => P.sign(ctx, cam, x, z, profile, U) });
+    }
+    if (shown.fence && kind !== "city") {
+      const side = rng() < 0.5 ? -1 : 1;
+      for (let z = 3.2; z < 46; z += 7) {
+        const z0 = z;
+        queue.push({ z: z0 + 3.5, draw: (ctx) => P.fencePiece(ctx, cam, road.x(z0) + side * (halfW + 0.7), z0, z0 + 7, profile, U) });
+      }
+    }
+    if (shown.banner) {
+      const z = 13 + rng() * 10;
+      const h = kind === "city" ? 7 : 4.6;
+      const xl = road.x(z) - halfW - 0.6;
+      const xr = road.x(z) + halfW + 0.6;
+      queue.push({
+        z,
+        draw: (ctx) => {
+          [xl, xr].forEach((x) => {
+            const b = cam.p(x, z, 0);
+            const t = cam.p(x, z, h);
+            stroke(ctx, () => {
+              ctx.moveTo(b.x, b.y);
+              ctx.lineTo(t.x, t.y);
+            }, INK, Math.max(1.6, b.s * 0.1) + U);
+            stroke(ctx, () => {
+              ctx.moveTo(b.x, b.y);
+              ctx.lineTo(t.x, t.y);
+            }, col(profile.poleColor, -10), Math.max(1, b.s * 0.1));
+          });
+          P.bunting(ctx, cam.p(xl, z, h - 0.2), cam.p(xr, z, h - 0.2), profile, U, rng);
+        },
+      });
+    }
+  }
+
+  function addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, kind) {
+    const side = () => (rng() < 0.5 ? -1 : 1);
+    const at = (z, x, y, draw) => queue.push({ z, draw: (ctx) => {
+      const p = cam.p(x, z, y || 0);
+      if (p.x < -p.s * 12 || p.x > cam.W + p.s * 12) return;
+      draw(ctx, p);
+    } });
+    if (rng() < 0.3) {
+      const z = 3.5 + rng() * 6;
+      const color = { h: rng() * 360, s: 65, l: 60 };
+      at(z, road.x(z) + side() * (halfW + 0.6 + rng() * 2), 0, (ctx, p) => P.snail(ctx, p.x, p.y, p.s, color, U, rng));
+    }
+    if (kind === "wild" && rng() < 0.2) {
+      const z = 70 + rng() * 70;
+      at(z, road.x(z) + side() * (halfW + 15 + rng() * 40), 10 + rng() * 12, (ctx, p) => P.floatingRock(ctx, p.x, p.y, p.s, pal.rock, pal.plantA, U, rng));
+    }
+    if (rng() < (kind === "village" ? 0.3 : 0.14)) {
+      const z = 8 + rng() * 10;
+      at(z, road.x(z) + side() * (halfW + 2 + rng() * 4), 0, (ctx, p) => P.totem(ctx, p.x, p.y, p.s, U, rng));
+    }
+    if (rng() < (kind === "village" ? 0.55 : 0.15)) {
+      const z = 4 + rng() * 4;
+      const color = shown.sign ? profile.accentColor : { h: 220, s: 18, l: 70 };
+      const glyph = shown.sign ? profile.signGlyph : null;
+      at(z, road.x(z) + side() * (halfW + 0.7), 0, (ctx, p) => P.mailbox(ctx, p.x, p.y, p.s, U, color, glyph));
+    }
+    if ((biome === "jungle" || biome === "meadow") && rng() < 0.45) {
+      const n = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) {
+        const z = 3.5 + rng() * 10;
+        at(z, road.x(z) + side() * (halfW + 0.8 + rng() * 4), 0, (ctx, p) => P.glowCaps(ctx, p.x, p.y, p.s, U, rng));
+      }
+    }
+    if (rng() < 0.16) {
+      const n = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) {
+        const z = 90 + rng() * 110;
+        at(z, road.x(z) + (rng() - 0.5) * 120, 25 + rng() * 20, (ctx, p) => P.skyJelly(ctx, p.x, p.y, p.s, U, rng));
+      }
+    }
+  }
+
+  function populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown) {
+    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "wild");
+    const density = { jungle: 46, meadow: 26, beach: 18, dry: 10, highland: 16, rock: 10, snow: 8, sea: 14, lake: 14 }[biome] || 20;
+    for (let i = 0; i < density; i++) {
+      const z = 3.2 + Math.pow(rng(), 1.5) * 90;
+      const side = rng() < 0.5 ? -1 : 1;
+      const x = road.x(z) + side * (halfW + 0.9 + Math.pow(rng(), 1.4) * 16);
+      addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, true);
+    }
+    for (let i = 0; i < density * 0.8; i++) {
+      const z = 70 + rng() * 220;
+      const side = rng() < 0.5 ? -1 : 1;
+      const x = road.x(z) + side * (halfW + 2 + rng() * 60);
+      addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, false);
+    }
+    if (shown.building) {
+      const z = 10 + rng() * 14;
+      const side = rng() < 0.5 ? -1 : 1;
+      addShack(queue, cam, road, halfW, profile, rng, U, z, side, true);
+    }
+    if (shown.aliens) {
+      const n = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) {
+        const z = 4.5 + rng() * 16;
+        const x = road.x(z) + (rng() - 0.5) * (halfW * 2 + 3);
+        addAlien(queue, cam, road, halfW, profile, rng, U, z, x);
+      }
+    } else if (rng() < 0.4) {
+      const z = 40 + rng() * 30;
+      addAlien(queue, cam, road, halfW, profile, rng, U, z, road.x(z) + (rng() - 0.5) * halfW * 3);
+    }
+    if (rng() < 0.15) addCar(queue, cam, road, halfW, profile, rng, U, 20 + rng() * 40);
+    if (rng() < 0.25) {
+      const z = 6 + rng() * 10;
+      const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.2);
+      queue.push({ z, draw: (ctx) => {
+        const p = cam.p(x, z, 0);
+        P.bench(ctx, p.x, p.y, p.s, { h: rng() * 360, s: 50, l: 62 }, U);
+      } });
+    }
+  }
+
+  function addShack(queue, cam, road, halfW, profile, rng, U, z, side, shownBuilding) {
+    const width = 4 + rng() * 2.2;
+    const depth = 3.5 + rng() * 1.8;
+    const off = 1.4 + rng() * 2.4;
+    const xa = road.x(z) + side * (halfW + off);
+    const spec = {
+      xa,
+      side,
+      z0: z,
+      width,
+      depth,
+      height: 2.7 + rng() * 0.8,
+      wall: wallPalette(profile, rng, shownBuilding),
+      roof: shownBuilding ? profile.roofColor : { h: 20, s: 30, l: 50 },
+      roofShape: shownBuilding ? profile.roofShape : null,
+      windowStyle: shownBuilding ? profile.windowStyle : "plain",
+      glyphs: rng() < 0.75 ? glyphRun(rng, 2 + Math.floor(rng() * 3)) : null,
+      board: { h: rng() * 360, s: 60, l: 80 },
+      awning: rng() < 0.4 ? { h: rng() * 360, s: 75, l: 62 } : null,
+      rand: rng,
+    };
+    queue.push({ z: z + depth * 0.5, draw: (ctx) => P.shack(ctx, cam, spec, U) });
+    if (rng() < 0.6) {
+      const pz = z - 0.6;
+      const px = xa - side * (0.4 + rng() * 0.6);
+      queue.push({ z: pz, draw: (ctx) => {
+        const p = cam.p(px, pz, 0);
+        if (rng() < 0.5) P.barrel(ctx, p.x, p.y, p.s, { h: rng() * 360, s: 55, l: 58 }, U);
+        else P.crate(ctx, p.x, p.y, p.s, U);
+      } });
+    }
+  }
+
+  function addCar(queue, cam, road, halfW, profile, rng, U, z) {
+    const lane = profile.drivingSide === "left" ? -1 : 1;
+    const x = road.x(z) + lane * halfW * 0.48;
+    const color = { h: rng() * 360, s: 70, l: 64 };
+    queue.push({ z, draw: (ctx) => {
+      const p = cam.p(x, z, 0);
+      P.hoverCar(ctx, p.x, p.y, p.s, color, U, rng);
+    } });
+  }
+
+  function populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown) {
+    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "village");
+    let z = 6 + rng() * 5;
+    const count = 2 + Math.floor(rng() * 4);
+    for (let i = 0; i < count; i++) {
+      addShack(queue, cam, road, halfW, profile, rng, U, z, i % 2 ? 1 : -1, shown.building);
+      z += 5 + rng() * 9;
+    }
+    for (let i = 0; i < 26; i++) {
+      const pz = 3.2 + Math.pow(rng(), 1.3) * 80;
+      const side = rng() < 0.5 ? -1 : 1;
+      addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + side * (halfW + 1 + rng() * 14), shown, true);
+    }
+    for (let i = 0; i < 18; i++) {
+      const pz = 60 + rng() * 200;
+      addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + (rng() < 0.5 ? -1 : 1) * (halfW + 3 + rng() * 50), shown, false);
+    }
+    if (rng() < 0.45) {
+      const sz = 5 + rng() * 6;
+      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.6);
+      const color = { h: rng() * 360, s: 75, l: 62 };
+      queue.push({ z: sz, draw: (ctx) => {
+        const p = cam.p(sx, sz, 0);
+        P.stall(ctx, p.x, p.y, p.s, color, U, rng);
+      } });
+    }
+    const near = shown.aliens;
+    const n = near ? 2 + Math.floor(rng() * 4) : 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const az = near ? 4 + rng() * 18 : 26 + rng() * 34;
+      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + (rng() - 0.5) * (halfW * 2 + 4));
+    }
+    if (rng() < 0.3) addCar(queue, cam, road, halfW, profile, rng, U, 14 + rng() * 30);
+  }
+
+  function populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown) {
+    [-1, 1].forEach((side) => {
+      let z = 3 + rng() * 3;
+      while (z < 240) {
+        const depth = 8 + rng() * 8;
+        const z0 = z;
+        const spec = {
+          xa: road.x(z0) + side * (halfW + 3.2),
+          side,
+          z0,
+          width: 10 + rng() * 6,
+          depth,
+          height: 9 + rng() * 22 + (z0 > 80 ? rng() * 14 : 0),
+          wall: wallPalette(profile, rng, shown.building),
+          roof: shown.building ? profile.roofColor : { h: 260, s: 12, l: 50 },
+          roofShape: shown.building ? profile.roofShape : null,
+          windowStyle: shown.building ? profile.windowStyle : "plain",
+          awning: { h: rng() * 360, s: 75, l: 62 },
+          balconies: rng() < 0.45,
+          pipe: rng() < 0.5,
+          neon: rng() < 0.55 ? { h: [320, 190, 50, 280][Math.floor(rng() * 4)], s: 95, l: 62 } : null,
+          glyphs: glyphRun(rng, 3),
+          rand: rng,
+        };
+        queue.push({ z: z0 + depth, draw: (ctx) => P.building(ctx, cam, spec, U) });
+        if (rng() < 0.35 && z0 < 70) {
+          const cz = z0 + depth * 0.5;
+          const other = road.x(cz) - side * (halfW + 3.2);
+          const mine = road.x(cz) + side * (halfW + 3.2);
+          const h1 = 6 + rng() * 3;
+          const h2 = 6 + rng() * 3;
+          queue.push({ z: cz - 0.05, draw: (ctx) => {
+            const a = cam.p(mine, cz, h1);
+            const b = cam.p(other, cz, h2);
+            stroke(ctx, () => {
+              ctx.moveTo(a.x, a.y);
+              ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 + a.s * 1.2, b.x, b.y);
+            }, INK, Math.max(0.8, U));
+          } });
+        }
+        z += depth + (rng() < 0.25 ? 1.5 + rng() * 2 : 0);
+      }
+    });
+    for (let i = 0; i < 3; i++) {
+      const tz = 5 + rng() * 30;
+      const side = rng() < 0.5 ? -1 : 1;
+      const tx = road.x(tz) + side * (halfW + 0.9);
+      if (shown.vegetation) addPlant(queue, cam, profile, pal, "meadow", rng, U, tz, tx, { vegetation: true }, true);
+      else {
+        const plant = pal.plantA;
+        queue.push({ z: tz, draw: (ctx) => {
+          const p = cam.p(tx, tz, 0);
+          P.tree(ctx, p.x, p.y, p.s, 4 + rng() * 2, plant, pal.trunk, rng, U);
+        } });
+      }
+    }
+    if (rng() < 0.6) {
+      const cz = 5 + rng() * 8;
+      const side = rng() < 0.5 ? -1 : 1;
+      const cx = road.x(cz) + side * (halfW + 1.8);
+      const color = { h: rng() * 360, s: 75, l: 64 };
+      queue.push({ z: cz, draw: (ctx) => {
+        const p = cam.p(cx, cz, 0);
+        P.cafe(ctx, p.x, p.y, p.s, color, U);
+      } });
+      if (shown.aliens) {
+        addAlien(queue, cam, road, halfW, profile, rng, U, cz - 0.4, cx - 0.9);
+        addAlien(queue, cam, road, halfW, profile, rng, U, cz - 0.4, cx + 0.9);
+      }
+    }
+    if (rng() < 0.35) {
+      const sz = 8 + rng() * 10;
+      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.7);
+      const color = { h: rng() * 360, s: 75, l: 62 };
+      queue.push({ z: sz, draw: (ctx) => {
+        const p = cam.p(sx, sz, 0);
+        P.stall(ctx, p.x, p.y, p.s, color, U, rng);
+      } });
+    }
+    const near = shown.aliens;
+    const n = near ? 4 + Math.floor(rng() * 5) : 2 + Math.floor(rng() * 4);
+    for (let i = 0; i < n; i++) {
+      const az = near ? 4 + rng() * 22 : 30 + rng() * 40;
+      const side = rng() < 0.5 ? -1 : 1;
+      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + side * (halfW + 0.5 + rng() * 2.4));
+    }
+    const cars = 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < cars; i++) addCar(queue, cam, road, halfW, profile, rng, U, 12 + rng() * 60);
+  }
+
+  function drawSkyline(ctx, cam, road, pal, rng, U) {
+    const vx = cam.p(road.x(400), 400, 0).x;
+    const color = mixC({ h: pal.sky0.h + 30, s: 30, l: 72 }, pal.sky1, 0.3);
+    for (let i = 0; i < 9; i++) {
+      const x = vx + (rng() - 0.5) * cam.W * 0.7;
+      const h = (60 + rng() * 150) * U;
+      const w = (12 + rng() * 18) * U;
+      P.tower(ctx, x, cam.y0 + 2, h, w, shade(color, (rng() - 0.5) * 12), rng, U);
+    }
+  }
+
+  function drawShips(ctx, cam, rng, U, count) {
+    for (let i = 0; i < count; i++) {
+      const name = ["shipPink", "shipBlue", "shipPink_manned", "shipBlue_manned"][Math.floor(rng() * 4)];
+      const size = (40 + rng() * 60) * U;
+      P.ship(ctx, cam.W * (0.08 + rng() * 0.84), cam.y0 * (0.15 + rng() * 0.6), size, name, (rng() - 0.5) * 0.4);
+    }
+  }
+
+  function drawForeground(ctx, cam, pal, biome, rng, U) {
+    const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
+    if (!lush) return;
+    [-1, 1].forEach((side) => {
+      if (rng() < (biome === "jungle" ? 0.25 : 0.55)) return;
+      const x = side < 0 ? -cam.W * 0.02 : cam.W * 1.02;
+      const plant = shade(pal.plantA, -6);
+      P.fern(ctx, x, cam.H + 20 * U, 100 * U, 2.2 + rng() * 1.4, plant, rng, U);
+      if (rng() < 0.5) P.fern(ctx, x + side * -cam.W * 0.06, cam.H + 30 * U, 100 * U, 1.4 + rng(), pal.plantB, rng, U);
+    });
+  }
+
+  function drawWeather(ctx, cam, profile, pal, rng, U) {
+    const { W, H, y0 } = cam;
+    if (profile.weather === "mist") {
+      for (let i = 0; i < 4; i++) {
+        const y = y0 - 20 * U + i * 26 * U;
+        const g = ctx.createLinearGradient(0, y - 30 * U, 0, y + 30 * U);
+        g.addColorStop(0, "rgba(255, 255, 255, 0)");
+        g.addColorStop(0.5, "rgba(255, 250, 255, 0.4)");
+        g.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y - 30 * U, W, 60 * U);
+      }
+    } else if (profile.weather === "dust") {
+      ctx.fillStyle = "rgba(240, 200, 140, 0.18)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "rgba(160, 110, 60, 0.5)";
+      for (let i = 0; i < 160; i++) {
+        ctx.beginPath();
+        ctx.arc(rng() * W, rng() * H, (0.6 + rng() * 1.6) * U, 0, TAU);
+        ctx.fill();
       }
     } else if (profile.weather === "spores") {
-      ctx.fillStyle = hsla(profile.vegetationColor, 0.75);
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 70; i++) {
+        const x = rng() * W;
+        const y = rng() * H * 0.9;
+        const r = (1.5 + rng() * 3.5) * U;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+        g.addColorStop(0, col(profile.accentColor, 30, 0, 0.9));
+        g.addColorStop(1, col(profile.accentColor, 30, 0, 0));
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(rng() * width, rng() * height * 0.92, (1.5 + rng() * 2.5) * unit, 0, Math.PI * 2);
+        ctx.arc(x, y, r * 3, 0, TAU);
         ctx.fill();
       }
     }
+    void pal;
   }
 
-  function drawVignette(ctx, width, height) {
-    const vignette = ctx.createRadialGradient(width / 2, height * 0.45, width * 0.2, width / 2, height * 0.5, width * 0.72);
-    vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,0.38)");
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, width, height);
+  function finish(ctx, cam, U) {
+    const { W, H } = cam;
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = ctx.createPattern(paperTexture(), "repeat");
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    const v = ctx.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
+    v.addColorStop(0, "rgba(40, 10, 60, 0)");
+    v.addColorStop(1, "rgba(40, 10, 60, 0.28)");
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, W, H);
+    void U;
+  }
+
+  function drawScene(ctx, W, H, opts) {
+    const { planet, location: loc, profile, rng } = opts;
+    const U = H / 720;
+    let biome = G.biomeAt(planet.terrain, loc.x, loc.y);
+    if (biome === "sea" || biome === "lake") biome = "beach";
+    const place = G.settlementAt(planet, loc.x, loc.y);
+    const kind = place.kind;
+    const shown = shownFeatures(profile, rng);
+    const pal = palette(profile, biome);
+    const roadInfo = planet.roads[loc.road];
+    const roadCls = roadInfo ? roadInfo.cls : "minor";
+    const halfW = kind === "city" ? 4.6 : roadCls === "major" ? 3.1 : 2.3;
+    const lane = (profile.drivingSide === "left" ? -1 : 1) * halfW * 0.4;
+    const cam = camera(W, H, lane);
+    const road = roadModel(planet, loc, rng, kind);
+    const hz = horizonProfile(cam, planet, loc);
+    const centerWater = hz.waterD[Math.floor(COLUMNS / 2)];
+    const zMax = centerWater ? clamp(centerWater * FAR_M * 0.9, 60, 600) : 600;
+
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    drawSky(ctx, cam, pal, profile, rng, U);
+    if (shown.stars) drawStars(ctx, cam, profile, rng, U);
+    drawMoons(ctx, cam, planet, rng, U);
+    if (shown.skyEvent) drawSkyEvent(ctx, cam, profile, rng, U);
+    drawClouds(ctx, cam, pal, rng, U);
+    const shipCount = kind === "city" ? 1 + Math.floor(rng() * 3) : rng() < (kind === "village" ? 0.3 : 0.12) ? 1 : 0;
+    drawShips(ctx, cam, rng, U, shipCount);
+
+    const haze = mixC(pal.sky1, pal.glow, 0.5);
+    drawBand(ctx, cam, hz.bands.far, hz.meta.far, pal.mountain, haze, { haze: 0.4, snow: true, ink: 1, inkAlpha: 0.55, trees: 0 }, rng, U);
+    if (kind === "city") drawSkyline(ctx, cam, road, pal, rng, U);
+    drawSea(ctx, cam, hz, pal, rng, U);
+    if (shown.landmark) drawLandmarks(ctx, cam, profile, pal, rng, U);
+    drawBand(ctx, cam, hz.bands.mid, hz.meta.mid, pal.hill, haze, { haze: 0.32, snow: true, ink: 1.1, inkAlpha: 0.6, trees: 7 }, rng, U);
+    drawBand(ctx, cam, hz.bands.near, hz.meta.near, shade(pal.hill, -6), haze, { haze: 0.12, snow: false, ink: 1.4, inkAlpha: 0.8, trees: 12 }, rng, U);
+    drawGround(ctx, cam, hz, pal, rng, U);
+    drawHatching(ctx, cam, road, halfW, pal, rng, U, kind === "city" ? 0 : 420);
+    if (shown.groundPattern && kind !== "city") drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U);
+    drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax);
+
+    const queue = [];
+    if (kind === "city") populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown);
+    else if (kind === "village") populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
+    else populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
+    addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind);
+    queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z).forEach((item) => item.draw(ctx));
+
+    if (kind !== "city") drawForeground(ctx, cam, pal, biome, rng, U);
+    if (shown.weather) drawWeather(ctx, cam, profile, pal, rng, U);
+    finish(ctx, cam, U);
+    ctx.restore();
   }
 
   G.drawScene = drawScene;
+  G.paperTexture = paperTexture;
 })(window.AlienGuessr = window.AlienGuessr || {});

@@ -8,20 +8,16 @@
       mode,
       planet,
       rng,
-      seenRegions: new Set(),
       rounds: [],
       roundIndex: 0,
       totalScore: 0,
+      bestRound: 0,
       phase: "guessing",
       pin: null,
-      mapOpen: false,
       lastResult: null,
       roundScores: [],
     };
-    const count = mode === "play" ? 5 : 1;
-    for (let i = 0; i < count; i++) {
-      match.rounds.push(G.pickLocation(planet, rng, match.seenRegions));
-    }
+    match.rounds.push(G.pickLocation(planet, rng));
     return match;
   }
 
@@ -30,13 +26,21 @@
   }
 
   function currentRegion(match) {
+    return match.planet.regions[currentRound(match).regionId];
+  }
+
+  function photoKey(match) {
     const round = currentRound(match);
-    return match.planet.regions[round.regionId];
+    return `${match.seed}|photo|${match.difficulty}|${round.x.toFixed(2)}|${round.y.toFixed(2)}`;
   }
 
   function photoRng(match) {
-    const round = currentRound(match);
-    return G.mulberry32(G.hashSeed(`${match.seed}|photo|${match.difficulty}|${round.x.toFixed(2)}|${round.y.toFixed(2)}`));
+    return G.mulberry32(G.hashSeed(photoKey(match)));
+  }
+
+  function averageScore(match) {
+    if (!match.roundScores.length) return 0;
+    return match.totalScore / match.roundScores.length;
   }
 
   function submitGuess(match) {
@@ -46,43 +50,26 @@
     const points = G.pointsForDistance(dist);
     match.totalScore += points;
     match.roundScores.push(points);
-    match.lastResult = {
-      dist,
-      points,
-      total: match.totalScore,
-    };
+    match.bestRound = Math.max(match.bestRound, points);
+    match.lastResult = { dist, points, total: match.totalScore };
     match.phase = "revealed";
-    match.mapOpen = true;
   }
 
   function advance(match) {
-    if (match.phase !== "revealed") return "stay";
-    if (match.mode === "study") {
-      match.rounds.push(G.pickLocation(match.planet, match.rng, match.seenRegions));
-      match.roundIndex += 1;
-      resetRound(match);
-      return "stay";
-    }
-    if (match.roundIndex >= 4) {
-      match.phase = "done";
-      return "done";
-    }
+    if (match.phase !== "revealed") return;
+    match.rounds.push(G.pickLocation(match.planet, match.rng));
     match.roundIndex += 1;
-    resetRound(match);
-    return "stay";
-  }
-
-  function resetRound(match) {
     match.phase = "guessing";
     match.pin = null;
-    match.mapOpen = false;
     match.lastResult = null;
   }
 
   G.createMatch = createMatch;
   G.currentRound = currentRound;
   G.currentRegion = currentRegion;
+  G.photoKey = photoKey;
   G.photoRng = photoRng;
+  G.averageScore = averageScore;
   G.submitGuess = submitGuess;
   G.advance = advance;
 })(window.AlienGuessr = window.AlienGuessr || {});

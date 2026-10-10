@@ -2,11 +2,11 @@
   const $ = (id) => document.getElementById(id);
   let match = null;
   let difficulty = "easy";
+  const photoCache = { key: "", canvas: null };
 
   const screens = {
     start: $("screen-start"),
     play: $("screen-play"),
-    results: $("screen-results"),
   };
 
   function formatPoints(value) {
@@ -14,13 +14,23 @@
   }
 
   function difficultyHint(level) {
-    if (level === "medium") return "Twelve regions. Pair the street with the sky.";
-    if (level === "hard") return "Twenty regions. Neighbors share a sky. Read the sign, the stars, and the path.";
-    return "Six big regions. The sky, the aliens, and the horizon give it away.";
+    if (level === "medium") return "Twelve regions. Pair the street stuff with the sky stuff.";
+    if (level === "hard") return "Twenty regions. Neighbors share a sky. Read signs, poles, stars, and the locals' faces.";
+    return "Six big regions. The sky, the locals, and the vibes give it away.";
+  }
+
+  function quip(points) {
+    if (points >= 4990) return "Perfect. Are you... from here?";
+    if (points >= 4500) return "Basically psychic. Suspicious.";
+    if (points >= 3500) return "Solid. The locals are mildly impressed.";
+    if (points >= 2000) return "Right continent. Probably.";
+    if (points >= 800) return "Bold guess. Wrong, but bold.";
+    return "Not even the same dimension, buddy.";
   }
 
   function titleCase(value) {
-    return value.charAt(0).toUpperCase() + value.slice(1);
+    const text = String(value).replace(/_/g, " ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   function show(name) {
@@ -46,26 +56,61 @@
     return typed || G.randomSeed();
   }
 
-  function start(mode) {
+  function sound(name) {
+    try {
+      if (!G.audio) return;
+      G.audio.start();
+      if (name) G.audio.sfx(name);
+    } catch (error) {
+      // audio is optional
+    }
+  }
+
+  async function start(mode) {
+    sound("beam");
     const seed = selectedSeed();
     $("seed-input").value = seed;
+    $("loading-note").hidden = false;
+    document.body.classList.add("is-loading");
+    await G.assetsReady;
+    await new Promise((resolve) => setTimeout(resolve, 30));
     match = G.createMatch(seed, difficulty, mode);
+    G.buildAtlas(match.planet);
+    G.mapView.reset(false);
+    photoCache.key = "";
+    $("loading-note").hidden = true;
+    document.body.classList.remove("is-loading");
     show("play");
     requestAnimationFrame(() => requestAnimationFrame(draw));
   }
 
-  function draw() {
-    if (!match || screens.play.hidden) return;
-    updateHud();
+  function drawPhoto() {
     const photo = $("photo");
     const size = fitCanvas(photo);
-    if (photo.getBoundingClientRect().width < 20) {
-      requestAnimationFrame(draw);
-      return;
+    if (photo.getBoundingClientRect().width < 20) return false;
+    const key = `${G.photoKey(match)}|${size.width}x${size.height}`;
+    if (photoCache.key !== key) {
+      const buffer = photoCache.canvas || document.createElement("canvas");
+      buffer.width = size.width;
+      buffer.height = size.height;
+      const round = G.currentRound(match);
+      G.drawScene(buffer.getContext("2d"), size.width, size.height, {
+        planet: match.planet,
+        location: round,
+        profile: G.currentRegion(match).profile,
+        rng: G.photoRng(match),
+        difficulty: match.difficulty,
+      });
+      photoCache.canvas = buffer;
+      photoCache.key = key;
     }
-    const region = G.currentRegion(match);
-    G.drawScene(photo.getContext("2d"), size.width, size.height, region.profile, G.photoRng(match), match.difficulty);
+    const ctx = photo.getContext("2d");
+    ctx.clearRect(0, 0, size.width, size.height);
+    ctx.drawImage(photoCache.canvas, 0, 0);
+    return true;
+  }
 
+  function drawMapOnly() {
     const map = $("map");
     const mapSize = fitCanvas(map);
     if (map.getBoundingClientRect().width < 20) return;
@@ -76,34 +121,58 @@
     });
   }
 
+  function draw() {
+    if (!match || screens.play.hidden) return;
+    updateHud();
+    if (!drawPhoto()) {
+      requestAnimationFrame(draw);
+      return;
+    }
+    drawMapOnly();
+  }
+
+  function bump(id, text) {
+    const node = $(id);
+    if (node.textContent === text) return;
+    node.textContent = text;
+    node.classList.remove("bump");
+    void node.offsetWidth;
+    node.classList.add("bump");
+  }
+
   function updateHud() {
     const study = match.mode === "study";
-    $("mode-label").textContent = study ? "Study" : "Match";
-    $("round-label").textContent = study
-      ? `Location ${match.roundIndex + 1}`
-      : `Round ${match.roundIndex + 1}/5`;
+    const played = match.roundScores.length;
+    $("mode-label").textContent = study ? "Study" : "Endless";
+    $("round-label").textContent = String(match.roundIndex + 1);
+    bump("score-label", formatPoints(match.totalScore));
+    $("avg-label").textContent = played ? formatPoints(G.averageScore(match)) : "-";
+    $("best-label").textContent = played ? formatPoints(match.bestRound) : "-";
     $("seed-label").textContent = match.seed;
-    $("score-label").textContent = formatPoints(match.totalScore);
     $("difficulty-pill").textContent = titleCase(match.difficulty);
-    $("map-bar").hidden = match.phase !== "guessing";
-    $("result-banner").hidden = match.phase !== "revealed";
+    const revealed = match.phase === "revealed";
+    $("map-bar").hidden = revealed;
+    $("result-banner").hidden = !revealed;
     $("confirm-btn").disabled = !match.pin;
-    $("map-hint").hidden = match.phase !== "guessing";
-    $("map-hint").textContent = match.pin
-      ? "Click again to move the pin, then lock it in."
-      : "Click the map to place your pin.";
+    $("map-hint").textContent = revealed
+      ? "Pink is you, blue is the truth"
+      : match.pin ? "Click again to move the probe" : "Click to drop · scroll to zoom · drag to pan";
 
+    const tag = $("place-tag");
+    tag.hidden = !revealed;
     if (match.lastResult) {
-      $("round-points").textContent = `${formatPoints(match.lastResult.points)} points this round · ${formatPoints(match.lastResult.total)} total`;
-      $("distance-label").textContent = `${Math.round(match.lastResult.dist)} units away`;
-      $("next-btn").textContent = study
-        ? "Next location"
-        : match.roundIndex >= 4
-          ? "See results"
-          : "Next round";
+      $("result-quip").textContent = quip(match.lastResult.points);
+      $("round-points").textContent = formatPoints(match.lastResult.points);
+      $("distance-label").textContent = `${Math.round(match.lastResult.dist)} units off`;
+      const round = G.currentRound(match);
+      const place = G.settlementAt(match.planet, round.x, round.y);
+      const where = place.kind === "wild"
+        ? `Somewhere outside ${place.town ? place.town.name : "civilization"}`
+        : `${place.kind === "city" ? "Downtown" : place.town.kind === "city" ? "Outskirts of" : "Village of"} ${place.town.name}`;
+      tag.textContent = `${where} · Region ${round.regionId + 1}`;
     }
 
-    const showClues = study && match.phase === "revealed";
+    const showClues = study && revealed;
     $("clue-panel").hidden = !showClues;
     if (showClues) renderClues(G.currentRegion(match).profile);
   }
@@ -116,11 +185,27 @@
       eye: "Eye world",
       jelly: "Jelly moon",
       shard: "Shattered planet",
-      spiral: "Spiral mass",
+      spiral: "Spiral sky",
       worm: "Sky serpent",
     };
+    const plantNames = {
+      mushroom: "Giant mushrooms",
+      palm: "Space palms",
+      tentacle: "Tentacle vines",
+      crystal: "Crystal clusters",
+      eyestalk: "Eyestalks",
+      bulb: "Glow bulbs",
+      spiralfern: "Spiral ferns",
+      balloon: "Balloon pods",
+    };
+    const species = profile.alienSpecies;
     const eyeNames = { 1: "one eye", 2: "two eyes", 3: "three eyes" };
+    const detail = species.detail === "none" ? "bald" : titleCase(species.detail).toLowerCase();
     const groups = [
+      ["Locals", [
+        ["Species", `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`, "alien"],
+        ["Colors", `${alienNames[profile.alienMix]}, ${profile.alienHeight}`, null],
+      ]],
       ["Sky", [
         ["Sky", "Two-tone", profile.skyGradient],
         ["Stars", titleCase(profile.starPattern), null],
@@ -128,29 +213,25 @@
         ["Weather", titleCase(profile.weather), null],
       ]],
       ["Land", [
-        ["Horizon", titleCase(profile.terrain), null],
-        ["Soil", "Ground color", profile.groundColor],
+        ["Rocks", titleCase(profile.terrain), null],
+        ["Grass", "Ground color", profile.groundColor],
         ["Soil pattern", titleCase(profile.groundPattern), null],
-        ["Vegetation", titleCase(profile.vegetation), profile.vegetationColor],
+        ["Plants", plantNames[profile.vegetation] || titleCase(profile.vegetation), profile.vegetationColor],
       ]],
       ["Street", [
-        ["Path", titleCase(profile.pathStyle), profile.pathLineColor],
-        ["Side", titleCase(profile.drivingSide), null],
+        ["Road", titleCase(profile.pathStyle), profile.pathLineColor],
+        ["Driving side", titleCase(profile.drivingSide), null],
         ["Fence", titleCase(profile.fence), profile.poleColor],
-        ["Banner", titleCase(profile.banner), profile.accentColor],
+        ["Decor", titleCase(profile.banner), profile.accentColor],
       ]],
       ["Built", [
         ["Roof", titleCase(profile.roofShape), profile.roofColor],
+        ["Walls", "Wall paint", profile.wallColor],
         ["Windows", titleCase(profile.windowStyle), null],
         ["Pole", poleNames[profile.poleTop], profile.poleColor],
         ["Sign", titleCase(profile.signShape), profile.accentColor],
         ["Glyph", `Symbol ${profile.signGlyph + 1}`, "glyph"],
       ]],
-      ["Locals", [[
-        "Aliens",
-        `${alienNames[profile.alienMix]}, ${profile.alienHeight}, ${profile.alienTrait}, ${eyeNames[profile.eyeCount]}`,
-        null,
-      ]]],
     ];
 
     const list = $("clue-list");
@@ -169,49 +250,43 @@
   }
 
   function clueRow(profile, [label, text, color]) {
-      const row = document.createElement("div");
-      row.className = "clue";
-      if (color === "glyph") {
-        const canvas = document.createElement("canvas");
-        canvas.className = "glyph-swatch";
-        canvas.width = 72;
-        canvas.height = 72;
-        row.appendChild(canvas);
-        const ink = profile.accentColor.l > 62 ? "#1a1024" : "#f7f4ff";
-        canvas.style.background = G.cssColor(profile.accentColor);
-        G.drawGlyph(canvas.getContext("2d"), profile.signGlyph, 36, 36, 46, ink);
-      } else if (Array.isArray(color)) {
-        const swatch = document.createElement("div");
-        swatch.className = "swatch";
-        swatch.style.background = `linear-gradient(${G.cssColor(color[0])}, ${G.cssColor(color[1])})`;
-        row.appendChild(swatch);
-      } else if (color) {
-        const swatch = document.createElement("div");
-        swatch.className = "swatch";
-        swatch.style.background = G.cssColor(color);
-        row.appendChild(swatch);
-      }
-      const copy = document.createElement("div");
-      const name = document.createElement("span");
-      name.textContent = label;
-      const value = document.createElement("strong");
-      value.textContent = text || "Two-tone sky";
-      copy.append(name, value);
-      row.appendChild(copy);
-      return row;
-  }
-
-  function showResults() {
-    show("results");
-    $("results-score").textContent = formatPoints(match.totalScore);
-    $("results-seed").textContent = match.seed;
-    const list = $("results-list");
-    list.replaceChildren();
-    match.roundScores.forEach((points, index) => {
-      const item = document.createElement("li");
-      item.textContent = `Round ${index + 1}: ${formatPoints(points)}`;
-      list.appendChild(item);
-    });
+    const row = document.createElement("div");
+    row.className = "clue";
+    if (color === "glyph") {
+      const canvas = document.createElement("canvas");
+      canvas.className = "glyph-swatch";
+      canvas.width = 72;
+      canvas.height = 72;
+      row.appendChild(canvas);
+      const ink = profile.accentColor.l > 62 ? "#1a1024" : "#f7f4ff";
+      canvas.style.background = G.cssColor(profile.accentColor);
+      G.drawGlyph(canvas.getContext("2d"), profile.signGlyph, 36, 36, 46, ink);
+    } else if (color === "alien") {
+      const canvas = document.createElement("canvas");
+      canvas.className = "alien-swatch";
+      canvas.width = 120;
+      canvas.height = 120;
+      row.appendChild(canvas);
+      G.drawAlienPreview(canvas.getContext("2d"), profile, 120, 120);
+    } else if (Array.isArray(color)) {
+      const swatch = document.createElement("div");
+      swatch.className = "swatch";
+      swatch.style.background = `linear-gradient(${G.cssColor(color[0])}, ${G.cssColor(color[1])})`;
+      row.appendChild(swatch);
+    } else if (color) {
+      const swatch = document.createElement("div");
+      swatch.className = "swatch";
+      swatch.style.background = G.cssColor(color);
+      row.appendChild(swatch);
+    }
+    const copy = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("strong");
+    value.textContent = text;
+    copy.append(name, value);
+    row.appendChild(copy);
+    return row;
   }
 
   async function copyText(text, button) {
@@ -225,11 +300,25 @@
       document.execCommand("copy");
       input.remove();
     }
-    const previous = button.textContent;
-    button.textContent = "Copied";
-    setTimeout(() => {
-      button.textContent = previous;
-    }, 1200);
+    button.classList.add("copied");
+    setTimeout(() => button.classList.remove("copied"), 1200);
+  }
+
+  function lockIn() {
+    if (!match || !match.pin || match.phase !== "guessing") return;
+    G.submitGuess(match);
+    const points = match.lastResult.points;
+    sound(points >= 3500 ? "great" : points < 1200 ? "meh" : "lock");
+    updateHud();
+    G.mapView.fit([match.pin, G.currentRound(match)]);
+  }
+
+  function next() {
+    if (!match || match.phase !== "revealed") return;
+    G.advance(match);
+    sound("beam");
+    G.mapView.reset(false);
+    draw();
   }
 
   document.querySelectorAll(".diff").forEach((button) => {
@@ -238,52 +327,34 @@
       document.querySelectorAll(".diff").forEach((item) => {
         item.classList.toggle("is-selected", item === button);
       });
-      const hint = $("diff-hint");
-      if (hint) hint.textContent = difficultyHint(difficulty);
+      $("diff-hint").textContent = difficultyHint(difficulty);
     });
   });
 
   $("play-btn").addEventListener("click", () => start("play"));
   $("study-btn").addEventListener("click", () => start("study"));
-  $("map-dock").addEventListener("mouseenter", () => {
-    $("map-dock").classList.add("is-zoomed");
-    requestAnimationFrame(() => requestAnimationFrame(draw));
-  });
-  $("map-dock").addEventListener("mouseleave", () => {
-    $("map-dock").classList.remove("is-zoomed");
-    requestAnimationFrame(() => requestAnimationFrame(draw));
-  });
-  $("map-dock").addEventListener("transitionend", (event) => {
-    if (event.propertyName === "width" || event.propertyName === "transform") draw();
-  });
-  $("confirm-btn").addEventListener("click", () => {
-    G.submitGuess(match);
-    draw();
-  });
-  $("next-btn").addEventListener("click", () => {
-    const status = G.advance(match);
-    if (status === "done") showResults();
-    else draw();
-  });
+  $("confirm-btn").addEventListener("click", lockIn);
+  $("next-btn").addEventListener("click", next);
   $("back-btn").addEventListener("click", () => {
     $("seed-input").value = match.seed;
     show("start");
   });
   $("copy-seed").addEventListener("click", () => copyText(match.seed, $("copy-seed")));
-  $("map").addEventListener("click", (event) => {
-    if (!match || match.phase !== "guessing") return;
-    match.pin = G.eventToMap(event, $("map"));
-    draw();
+  G.mapView.attach($("map"), {
+    redraw: () => {
+      if (match && !screens.play.hidden) drawMapOnly();
+    },
+    onPin: (point) => {
+      if (!match || match.phase !== "guessing") return;
+      match.pin = point;
+      sound("drop");
+      updateHud();
+      drawMapOnly();
+    },
   });
-
-  $("again-btn").addEventListener("click", () => {
-    $("seed-input").value = match.seed;
-    start("play");
-  });
-  $("results-study").addEventListener("click", () => {
-    $("seed-input").value = match.seed;
-    start("study");
-  });
+  $("zoom-in").addEventListener("click", () => G.mapView.zoomBy(1.6));
+  $("zoom-out").addEventListener("click", () => G.mapView.zoomBy(1 / 1.6));
+  $("zoom-reset").addEventListener("click", () => G.mapView.reset(true));
 
   $("seed-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter") start("play");
@@ -292,12 +363,35 @@
   document.addEventListener("keydown", (event) => {
     if (!match || screens.play.hidden) return;
     if (event.target === $("seed-input")) return;
-    if (event.key === "Enter" && match.pin && match.phase === "guessing") {
-      event.preventDefault();
-      G.submitGuess(match);
-      draw();
+    if (event.key === "+" || event.key === "=") G.mapView.zoomBy(1.6);
+    else if (event.key === "-" || event.key === "_") G.mapView.zoomBy(1 / 1.6);
+    else if (event.key === "0") G.mapView.reset(true);
+    if (event.key === "Enter" || event.key === " ") {
+      if (match.phase === "guessing" && match.pin) {
+        event.preventDefault();
+        lockIn();
+      } else if (match.phase === "revealed") {
+        event.preventDefault();
+        next();
+      }
     }
   });
 
-  window.addEventListener("resize", draw);
+  document.addEventListener("mousemove", (event) => {
+    if (screens.start.hidden) return;
+    document.querySelectorAll(".mascot .eye").forEach((eye) => {
+      const rect = eye.getBoundingClientRect();
+      const dx = event.clientX - (rect.left + rect.width / 2);
+      const dy = event.clientY - (rect.top + rect.height / 2);
+      const len = Math.hypot(dx, dy) || 1;
+      const reach = Math.min(1, len / 160) * rect.width * 0.22;
+      eye.firstElementChild.style.transform = `translate(${(dx / len) * reach}px, ${(dy / len) * reach}px)`;
+    });
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(draw, 80);
+  });
 })(window.AlienGuessr);
