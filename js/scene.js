@@ -87,9 +87,10 @@
     if (biome === "highland") ground = shade(ground, -3, -10);
     if (biome === "rock") ground = mixC(ground, { h: 265, s: 14, l: 60 }, 0.55);
     if (biome === "snow") ground = mixC(ground, { h: 215, s: 35, l: 93 }, 0.82);
-    const plantA = { h: ground.h + 16, s: clamp(ground.s + 14, 30, 70), l: clamp(ground.l - 12, 28, 60) };
-    const plantB = { h: ground.h - 24, s: clamp(ground.s + 6, 30, 70), l: clamp(ground.l - 2, 34, 66) };
-    const plantC = { h: ground.h + 48, s: 52, l: 48 };
+    const plantA = { h: ground.h + 16, s: clamp(ground.s + 26, 44, 84), l: clamp(ground.l - 12, 30, 60) };
+    const plantB = { h: ground.h - 24, s: clamp(ground.s + 20, 44, 84), l: clamp(ground.l - 2, 36, 66) };
+    const plantC = { h: ground.h + 48, s: 72, l: 52 };
+    const accent = profile.accentColor;
     const hill = shade(mixC(ground, plantA, 0.5), -6);
     const mountain = mixC({ h: 262, s: 22, l: 58 }, ground, 0.25);
     return {
@@ -106,6 +107,8 @@
       trunk: { h: (ground.h + 190) % 360, s: 34, l: 46 },
       rock: mixC({ h: 270, s: 14, l: 62 }, ground, 0.3),
       dirt: biome === "snow" ? { h: 220, s: 18, l: 82 } : mixC(profile.pathColor, ground, 0.12),
+      pop: { h: accent.h + 180, s: 82, l: 66 },
+      pop2: { h: ground.h + 150, s: 85, l: 68 },
     };
   }
 
@@ -168,6 +171,17 @@
       ctx.ellipse(x, y, r, r * (0.4 + rng() * 0.4), (rng() - 0.5) * 0.6, 0, TAU);
       ctx.fill();
     }
+    for (let i = 0; i < 4; i++) {
+      const tint = [profile.accentColor, pal.sky0, pal.glow, pal.pop][i];
+      const y = y0 * (0.15 + i * 0.2 + rng() * 0.1);
+      const span = (50 + rng() * 60) * U;
+      const band = ctx.createLinearGradient(0, y - span * 0.5, 0, y + span * 0.5);
+      band.addColorStop(0, col(tint, 10, 8, 0));
+      band.addColorStop(0.5, col(tint, 10, 8, 0.24));
+      band.addColorStop(1, col(tint, 10, 8, 0));
+      G.wc.wash(ctx, () => ctx.rect(0, y - span * 0.5, W, span), band, { soft: true, mottle: 0.2 });
+    }
+    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.3, 2.4);
     ctx.lineCap = "round";
     for (let i = 0; i < 6; i++) {
       const y = y0 * (0.1 + rng() * 0.75);
@@ -289,11 +303,12 @@
     const top = Math.min(...blobs.map((b) => b.y - b.r)) - iw * 2;
     const left = Math.min(...blobs.map((b) => b.x - b.r)) - iw * 2;
     const right = Math.max(...blobs.map((b) => b.x + b.r)) + iw * 2;
+    const wc = G.wc.active();
     ctx.save();
     ctx.beginPath();
     ctx.rect(left, top, right - left, baseY + iw - top);
     ctx.clip();
-    ctx.fillStyle = INK;
+    ctx.fillStyle = wc ? G.wc.patternFor(ctx, "graphite") : INK;
     shape(iw);
     ctx.fill();
     ctx.restore();
@@ -306,7 +321,12 @@
     ctx.fillStyle = col(color);
     ctx.fillRect(left, top, right - left, baseY - top);
     const span = baseY - top;
-    ctx.fillStyle = col(color, -10, 6);
+    if (wc) {
+      G.wc.bloom(ctx, l + (r - l) * 0.3, baseY - span * 0.45, span * 0.5, "hsl(330 90% 82%)", 0.35);
+      G.wc.bloom(ctx, l + (r - l) * 0.75, baseY - span * 0.3, span * 0.4, "hsl(200 90% 84%)", 0.3);
+      G.wc.texture(ctx, left, top, right - left, baseY - top, 0.45);
+    }
+    ctx.fillStyle = wc ? col(mixC(color, { h: 18, s: 95, l: 74 }, 0.5), -4, 10) : col(color, -10, 6);
     ctx.beginPath();
     ctx.moveTo(left, baseY);
     for (let x = left; x <= right; x += span * 0.3) {
@@ -541,6 +561,27 @@
     g.addColorStop(0, col(mixC(top, haze, opts.haze * 0.6)));
     g.addColorStop(1, col(mixC(color, haze, opts.haze)));
     paint(ctx, build, g, { glaze: col(color, -16, 0), glazeAlpha: 0.25, edge: 8 * U });
+    if (G.wc.active()) {
+      ctx.save();
+      ctx.beginPath();
+      build();
+      ctx.clip();
+      ctx.globalAlpha = 0.32 + opts.inkAlpha * 0.2;
+      G.wc.line(ctx, () => {
+        for (let i = 1; i < ys.length - 1; i += 1) {
+          const depth = cam.y0 - ys[i];
+          if (depth < 8 * U || (i * 7) % 3 === 0) continue;
+          const len = Math.min(depth * 0.5, (8 + ((i * 13) % 7) * 2) * U);
+          const x = xs[i];
+          const y = ys[i] + 3 * U;
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - len * 0.55, y + len);
+          ctx.moveTo(x + 4 * U, y + 1 * U);
+          ctx.lineTo(x + 4 * U - len * 0.45, y + len * 0.8);
+        }
+      }, 1.3 * U);
+      ctx.restore();
+    }
     if (opts.snow) {
       let run = [];
       const flush = () => {
@@ -700,6 +741,30 @@
       ctx.ellipse(x, y, r * 1.6, r * 0.5, 0, 0, TAU);
       ctx.fill();
     }
+    for (let i = 0; i < 9; i++) {
+      const y = cam.y0 + Math.pow(rng(), 0.8) * (cam.H - cam.y0);
+      const x = rng() * cam.W;
+      const r = (30 + rng() * 90) * U * ((y - cam.y0) / (cam.H - cam.y0) + 0.3);
+      const tint = [pal.pop, pal.pop2, pal.plantC][i % 3];
+      G.wc.bloom(ctx, x, y, r, col(tint, 0, 0), 0.16);
+    }
+    for (let i = 0; i < 140; i++) {
+      const t = Math.pow(rng(), 1.4);
+      const y = cam.y0 + 4 * U + t * (cam.H - cam.y0);
+      const x = rng() * cam.W;
+      const r = (0.8 + t * 3.2) * U;
+      const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
+      ctx.fillStyle = col({ h: hue, s: 88, l: 70 }, 0, 0, 0.9);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+      if (r > 2 * U) {
+        ctx.fillStyle = "rgba(255, 250, 240, 0.85)";
+        ctx.beginPath();
+        ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.35, 0, TAU);
+        ctx.fill();
+      }
+    }
     ctx.restore();
     stroke(ctx, () => {
       ctx.moveTo(0, tops[0]);
@@ -809,8 +874,256 @@
     });
   }
 
+  function groundPoly(ctx, cam, road, pts) {
+    pts.forEach(([x, z], i) => {
+      const p = cam.p(road.x(z) + x, z, 0);
+      if (i) ctx.lineTo(p.x, p.y);
+      else ctx.moveTo(p.x, p.y);
+    });
+    ctx.closePath();
+  }
+
+  function dryBrush(ctx, cam, road, z0, z1, a, b, color, rng, alpha) {
+    const A = alpha || 0.9;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = A * 0.5;
+    ctx.beginPath();
+    groundPoly(ctx, cam, road, [[a, z0], [b, z0], [b, z1], [a, z1]]);
+    ctx.fill();
+    const n = 5;
+    for (let k = 0; k < n; k++) {
+      const t0 = a + ((b - a) * k) / n;
+      const t1 = t0 + ((b - a) / n) * (0.7 + rng() * 0.5);
+      const s0 = z0 + rng() * (z1 - z0) * 0.12;
+      const s1 = z1 - rng() * (z1 - z0) * 0.22;
+      ctx.globalAlpha = A * (0.45 + rng() * 0.55);
+      ctx.beginPath();
+      groundPoly(ctx, cam, road, [[t0, s0], [t1, s0], [t1, s1], [t0, s1]]);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  const GOOFY_HUES = [330, 48, 190, 280, 18, 140, 210];
+
+  function flatEllipse(ctx, cam, p, z, rx, k) {
+    ctx.ellipse(p.x, p.y, rx, rx * (k || 1) * (cam.ch / z), 0, 0, TAU);
+  }
+
+  function drawRoadDetail(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax, zs, base) {
+    const city = kind === "city";
+    for (let i = 0; i < 30; i++) {
+      const x = (rng() * 2 - 1) * halfW * 0.95;
+      const w = 0.03 + rng() * 0.12;
+      const z0 = zs[0] + rng() * 18;
+      const z1 = z0 + 6 + rng() * 40;
+      const sub = zs.filter((z) => z > z0 && z < z1);
+      if (sub.length < 2) continue;
+      ctx.fillStyle = col(base, rng() < 0.5 ? -14 : 14, 0, 0.1 + rng() * 0.14);
+      ctx.beginPath();
+      strip(ctx, cam, road, sub, x, x + w);
+      ctx.fill();
+    }
+    const speck = city ? 520 : 260;
+    const specks = [new Path2D(), new Path2D()];
+    for (let i = 0; i < speck; i++) {
+      const z = 2.6 + Math.pow(rng(), 1.5) * 22;
+      const p = cam.p(road.x(z) + (rng() * 2 - 1) * halfW * 0.97, z, 0);
+      const r = Math.min(2.2 * U, Math.max(0.45 * U, p.s * (0.01 + rng() * 0.022)));
+      const path = specks[rng() < 0.5 ? 0 : 1];
+      path.moveTo(p.x + r, p.y);
+      path.ellipse(p.x, p.y, r, r * 0.65, 0, 0, TAU);
+    }
+    ctx.fillStyle = col(base, -16, 0, 0.5);
+    ctx.fill(specks[0]);
+    ctx.fillStyle = col(base, 18, 0, 0.45);
+    ctx.fill(specks[1]);
+    if (city) {
+      const near = zs.filter((z) => z < 60);
+      ctx.fillStyle = col(base, -18, 0, 0.26);
+      ctx.beginPath();
+      [-0.5, 0.5].forEach((lane) => [-0.38, 0.38].forEach((t) => strip(ctx, cam, road, near, lane * halfW + t - 0.14, lane * halfW + t + 0.14)));
+      ctx.fill();
+      ctx.fillStyle = col(base, -24, 0, 0.18);
+      ctx.beginPath();
+      [-0.5, 0.5].forEach((lane) => [-0.38, 0.38].forEach((t) => strip(ctx, cam, road, near, lane * halfW + t - 0.05, lane * halfW + t + 0.05)));
+      ctx.fill();
+      const own = (profile.drivingSide === "left" ? -1 : 1) * halfW * 0.5;
+      for (let z = 9 + rng() * 4; z < 26; z += 14) {
+        const pts = [[-0.09, z], [0.09, z], [0.09, z + 2.2], [0.3, z + 2.2], [0, z + 3.4], [-0.3, z + 2.2], [-0.09, z + 2.2]].map(([x, zz]) => [own + x, zz]);
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 250, 240, 0.8)";
+        ctx.beginPath();
+        groundPoly(ctx, cam, road, pts);
+        ctx.fill();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = G.wc.patternFor(ctx, "mottle");
+        ctx.fill();
+        ctx.restore();
+      }
+      [-1, 1].forEach((side) => {
+        ctx.fillStyle = col({ h: 240, s: 8, l: 62 }, 0, 0, 0.85);
+        ctx.beginPath();
+        for (let z = zs[0] + (side > 0 ? 0.6 : 0); z < 50; z += 2.4) {
+          groundPoly(ctx, cam, road, [[side * halfW, z], [side * (halfW + 0.22), z], [side * (halfW + 0.22), z + 1.2], [side * halfW, z + 1.2]]);
+        }
+        ctx.fill();
+        const gz = 5 + rng() * 10;
+        const gx0 = side * (halfW - 0.55);
+        const gx1 = side * (halfW - 0.05);
+        paint(ctx, () => groundPoly(ctx, cam, road, [[gx0, gz], [gx1, gz], [gx1, gz + 0.9], [gx0, gz + 0.9]]), col(base, -22), { ink: inkW(cam.p(0, gz, 0).s, U) * 0.7 });
+        stroke(ctx, () => {
+          for (let k = 1; k < 5; k++) {
+            const a = cam.p(road.x(gz) + gx0 + ((gx1 - gx0) * k) / 5, gz, 0);
+            const b = cam.p(road.x(gz + 0.9) + gx0 + ((gx1 - gx0) * k) / 5, gz + 0.9, 0);
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+          }
+        }, col(base, -30), Math.max(0.6, U * 0.9));
+      });
+      for (let i = 0; i < 4; i++) {
+        const side = rng() < 0.5 ? -1 : 1;
+        let z = 3.5 + rng() * 18;
+        let x = side * (halfW - 0.1);
+        const start = cam.p(road.x(z) + x, z, 0);
+        stroke(ctx, () => {
+          ctx.moveTo(start.x, start.y);
+          for (let k = 0; k < 5; k++) {
+            x -= side * (0.15 + rng() * 0.3);
+            z += (rng() - 0.3) * 0.6;
+            const p = cam.p(road.x(z) + x, z, 0);
+            ctx.lineTo(p.x, p.y);
+          }
+        }, col(base, -24, 0, 0.8), Math.max(0.6, U * 0.9));
+        P.tuft(ctx, start.x, start.y, start.s, 0.22, pal.plantA, rng, U);
+      }
+      {
+        const z = 5 + rng() * 9;
+        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW * 1.2, z, 0);
+        const rx = p.s * (0.6 + rng() * 0.4);
+        G.wc.wash(ctx, () => flatEllipse(ctx, cam, p, z, rx), col({ h: 240, s: 20, l: 30 }, 0, 0, 0.7), { bleed: 0.6 });
+        ctx.save();
+        ctx.lineWidth = Math.max(1, rx * 0.09);
+        ctx.globalAlpha = 0.45;
+        ["#ff5fa8", "#ffd84a", "#5ff2b0", "#5fb6ff", "#b46bff"].forEach((c, k) => {
+          ctx.strokeStyle = c;
+          ctx.beginPath();
+          ctx.ellipse(p.x + rx * 0.08 * k, p.y, rx * (0.75 - k * 0.12), rx * (0.75 - k * 0.12) * (cam.ch / z), 0.2, 0, TAU);
+          ctx.stroke();
+        });
+        ctx.restore();
+        stroke(ctx, () => flatEllipse(ctx, cam, p, z, rx), INK, inkW(p.s, U) * 0.6);
+      }
+    } else {
+      [-1, 1].forEach((side) => {
+        for (let i = 0; i < 70; i++) {
+          const z = 2.6 + Math.pow(rng(), 1.7) * 30;
+          const p = cam.p(road.x(z) + side * (halfW - 0.1 + rng() * 0.55), z, 0);
+          const r = Math.max(0.5 * U, p.s * (0.02 + rng() * 0.03));
+          ctx.fillStyle = col(pal.rock || base, -10 + rng() * 30, -10, 0.85);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, TAU);
+          ctx.fill();
+        }
+      });
+      if (rng() < 0.75) {
+        const tx = (rng() - 0.5) * halfW * 0.8;
+        const dir = rng() < 0.5 ? 1 : -1;
+        for (let z = 3 + rng() * 2, k = 0; z < 20; z += 1.25, k++) {
+          const x = tx + (k % 2 ? 0.17 : -0.17) + Math.sin(z * 0.4) * 0.3 * dir;
+          const p = cam.p(road.x(z) + x, z, 0);
+          const rx = p.s * 0.11;
+          ctx.fillStyle = col(base, -30, 6, 0.62);
+          ctx.beginPath();
+          flatEllipse(ctx, cam, p, z, rx, 1.7);
+          for (let t = -1; t <= 1; t++) {
+            const q = cam.p(road.x(z + 0.3) + x + t * 0.1, z + 0.3, 0);
+            ctx.moveTo(q.x + rx * 0.4, q.y);
+            flatEllipse(ctx, cam, q, z + 0.3, rx * 0.4, 1.2);
+          }
+          ctx.fill();
+        }
+      }
+      for (let i = 0; i < 18; i++) {
+        const z = 2.8 + Math.pow(rng(), 1.8) * 22;
+        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW * 1.8, z, 0);
+        const r = Math.max(0.9 * U, p.s * (0.028 + rng() * 0.03));
+        const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
+        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.35, r, (rng() - 0.5) * 0.6, 0, TAU), col({ h: hue, s: 70, l: 68 }), { ink: Math.max(0.6, U * 0.8) });
+        paint(ctx, () => ctx.ellipse(p.x - r * 0.4, p.y - r * 0.35, r * 0.4, r * 0.22, 0, 0, TAU), "rgba(255,255,255,0.7)");
+      }
+      if (roadCls === "minor") {
+        for (let z = 3; z < 26; z += 1.4 + rng()) {
+          const p = cam.p(road.x(z) + (rng() - 0.5) * 0.3, z, 0);
+          P.tuft(ctx, p.x, p.y, p.s, 0.2 + rng() * 0.12, pal.plantA, rng, U);
+        }
+      }
+      const odd = rng();
+      if (odd < 0.2) {
+        const z = 4 + rng() * 6;
+        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW, z, 0);
+        const r = p.s * 0.22;
+        const ry = cam.ch / z;
+        if (odd < 0.12) {
+          paint(ctx, () => {
+            ctx.moveTo(p.x, p.y);
+            [0.3, 2.3, 4.3].forEach((a) => {
+              ctx.quadraticCurveTo(p.x + Math.cos(a - 0.5) * r * 1.2, p.y + Math.sin(a - 0.5) * r * ry * 1.2, p.x + Math.cos(a) * r * 1.6, p.y + Math.sin(a) * r * ry * 1.6);
+              ctx.quadraticCurveTo(p.x + Math.cos(a + 0.5) * r * 1.2, p.y + Math.sin(a + 0.5) * r * ry * 1.2, p.x, p.y);
+            });
+          }, "#ffd84a", { ink: inkW(p.s, U) * 0.8 });
+          paint(ctx, () => ctx.ellipse(p.x, p.y, r * 0.35, r * 0.35 * ry, 0, 0, TAU), "#7a4a1f", { ink: inkW(p.s, U) * 0.6 });
+        } else {
+          const sock = () => {
+            ctx.moveTo(p.x - r, p.y - r * ry * 0.4);
+            ctx.lineTo(p.x + r * 0.4, p.y - r * ry * 0.5);
+            ctx.quadraticCurveTo(p.x + r * 0.9, p.y - r * ry * 0.4, p.x + r * 1.3, p.y + r * ry * 0.5);
+            ctx.quadraticCurveTo(p.x + r * 0.9, p.y + r * ry * 1.1, p.x + r * 0.1, p.y + r * ry * 0.4);
+            ctx.lineTo(p.x - r, p.y + r * ry * 0.4);
+            ctx.closePath();
+          };
+          paint(ctx, sock, "#fff4e6", { ink: inkW(p.s, U) * 0.8 });
+          ctx.save();
+          ctx.beginPath();
+          sock();
+          ctx.clip();
+          ctx.fillStyle = "rgba(255, 79, 154, 0.85)";
+          for (let k = 0; k < 3; k++) ctx.fillRect(p.x - r + k * r * 0.5, p.y - r * 2, r * 0.22, r * 4);
+          ctx.restore();
+        }
+      }
+    }
+    const flowers = city ? 0 : 34;
+    for (let i = 0; i < flowers; i++) {
+      const z = 2.6 + Math.pow(rng(), 1.6) * 26;
+      const side = rng() < 0.5 ? -1 : 1;
+      const p = cam.p(road.x(z) + side * (halfW + 0.1 + rng() * 0.7), z, 0);
+      const r = Math.max(1.1 * U, p.s * 0.055);
+      const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
+      ctx.fillStyle = col({ h: hue, s: 85, l: 68 });
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * TAU + i;
+        ctx.moveTo(p.x + Math.cos(a) * r + r * 0.55, p.y - r + Math.sin(a) * r);
+        ctx.arc(p.x + Math.cos(a) * r, p.y - r + Math.sin(a) * r, r * 0.55, 0, TAU);
+      }
+      ctx.fill();
+      ctx.fillStyle = hue === 48 ? "#ff5fa8" : "#ffd84a";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - r, r * 0.45, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = G.wc.PEN;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - r, r * 0.15, 0, TAU);
+      ctx.fill();
+    }
+  }
+
   function drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax) {
     const zs = roadSamples(cam, zMax);
+    const drng = G.mulberry32(Math.floor(rng() * 4294967296));
     const wobL = zs.map(() => (rng() - 0.5) * 0.25);
     const wobR = zs.map(() => (rng() - 0.5) * 0.25);
     const city = kind === "city";
@@ -895,27 +1208,20 @@
         paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 0.22), 0.15), col(curb), { ink: 1.1 * U });
         stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.8 * U);
       });
-      ctx.fillStyle = col(profile.pathLineColor, 10);
+      const dash = col(profile.pathLineColor, 10);
       for (let z = 3; z < zMax * 0.6; z += 6) {
-        ctx.beginPath();
-        strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
-        ctx.fill();
+        if (z < 30) dryBrush(ctx, cam, road, z, z + 3, -0.08, 0.08, dash, drng, 1);
+        else {
+          ctx.fillStyle = dash;
+          ctx.beginPath();
+          strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
+          ctx.fill();
+        }
       }
       if (rng() < 0.5) {
         const z0 = 7 + rng() * 6;
-        ctx.fillStyle = "rgba(255, 250, 245, 0.85)";
         for (let k = -halfW + 0.4; k < halfW - 0.4; k += 0.9) {
-          ctx.beginPath();
-          const a = cam.p(road.x(z0) + k, z0, 0);
-          const b = cam.p(road.x(z0) + k + 0.45, z0, 0);
-          const c = cam.p(road.x(z0 + 2.4) + k + 0.45, z0 + 2.4, 0);
-          const d = cam.p(road.x(z0 + 2.4) + k, z0 + 2.4, 0);
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.lineTo(c.x, c.y);
-          ctx.lineTo(d.x, d.y);
-          ctx.closePath();
-          ctx.fill();
+          dryBrush(ctx, cam, road, z0, z0 + 2.4, k, k + 0.45, "rgb(255, 250, 245)", drng, 0.9);
         }
       }
     } else {
@@ -952,7 +1258,9 @@
         const rx = p.s * (0.4 + rng() * 0.5);
         const ry = rx * (cam.ch / z);
         paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, { h: 200, s: 60, l: 80 }, 0.4)), { ink: inkW(p.s, U) * 0.7 });
+        G.wc.bloom(ctx, p.x + rx * 0.2, p.y + ry * 0.1, rx * 0.4, col(pal.sky0, 8, 10), 0.45);
         paint(ctx, () => ctx.ellipse(p.x - rx * 0.25, p.y - ry * 0.2, rx * 0.35, ry * 0.25, 0, 0, TAU), "rgba(255,255,255,0.6)");
+        stroke(ctx, () => ctx.ellipse(p.x + rx * 0.15, p.y + ry * 0.05, rx * 0.5, ry * 0.45, 0, 0, TAU), "rgba(255,255,255,0.7)", Math.max(0.6, U * 0.8));
       }
       for (let i = 0; i < 40; i++) {
         const z = 2.6 + Math.pow(rng(), 2) * 30;
@@ -995,6 +1303,7 @@
         ctx.stroke();
       });
     }
+    drawRoadDetail(ctx, cam, road, halfW, kind, roadCls, profile, pal, drng, U, zMax, zs, city ? { h: 255, s: 14, l: 44 } : pal.dirt);
     drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax);
     if (!city) {
       for (let i = 0; i < 46; i++) {
@@ -1010,16 +1319,17 @@
     const style = profile.pathStyle;
     const c = profile.pathLineColor;
     if (style === "plates") {
-      ctx.strokeStyle = "rgba(27, 16, 51, 0.4)";
-      ctx.lineWidth = 1 * U;
-      ctx.beginPath();
-      for (let z = zs[0]; z < Math.min(80, zMax); z += 2.4) {
-        const a = cam.p(road.x(z) - halfW, z, 0);
-        const b = cam.p(road.x(z) + halfW, z, 0);
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-      }
-      ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      G.wc.withLine("pencil", () => G.wc.line(ctx, () => {
+        for (let z = zs[0]; z < Math.min(80, zMax); z += 2.4) {
+          const a = cam.p(road.x(z) - halfW, z, 0);
+          const b = cam.p(road.x(z) + halfW, z, 0);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
+      }, 1.6 * U));
+      ctx.restore();
       ctx.fillStyle = col(c, 10, -30, 0.18);
       for (let z = zs[0]; z < Math.min(80, zMax); z += 4.8) {
         ctx.beginPath();
@@ -1094,6 +1404,7 @@
     const r = rng();
     queue.push({
       z,
+      pencil: !meta,
       draw: (ctx) => {
         const p = cam.p(x, z, 0);
         if (p.x < -p.s * 8 || p.x > cam.W + p.s * 8) return;
@@ -1118,7 +1429,9 @@
           P.tubeCoral(ctx, p.x, p.y, p.s, 0.8 + rng() * 1.3, { h: 5 + rng() * 40, s: 75, l: 66 }, rng, U);
         } else if (r < (lush ? 0.3 : 0.15)) {
           const t = rng();
-          if (t < 0.62) P.tree(ctx, p.x, p.y, p.s, 4.5 + rng() * 5, plant, pal.trunk, rng, U);
+          if (t < 0.44) P.tree(ctx, p.x, p.y, p.s, 4.5 + rng() * 5, plant, pal.trunk, rng, U);
+          else if (t < 0.54) P.lollipopTree(ctx, p.x, p.y, p.s, 3.5 + rng() * 3, plant, pal.trunk, rng() < 0.5 ? pal.pop : pal.pop2, rng, U);
+          else if (t < 0.62) P.noodleTree(ctx, p.x, p.y, p.s, 4 + rng() * 4, plant, pal.trunk, rng() < 0.5 ? pal.pop : pal.pop2, rng, U);
           else if (t < 0.82) P.cottonTree(ctx, p.x, p.y, p.s, 4 + rng() * 3, { h: [320, 200, 270][Math.floor(rng() * 3)], s: 60, l: 76 }, pal.trunk, rng, U);
           else P.jellyTree(ctx, p.x, p.y, p.s, 4.5 + rng() * 3.5, { h: 180 + rng() * 40, s: 70, l: 72 }, pal.trunk, rng, U);
         } else if (biome === "jungle" && r < 0.38) {
@@ -1521,27 +1834,24 @@
     void pal;
   }
 
-  function finish(ctx, cam, U) {
+  function finish(ctx, cam, U, pal, profile, rng) {
     const { W, H } = cam;
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
     const grade = ctx.createLinearGradient(0, 0, 0, H);
-    grade.addColorStop(0, "rgba(255, 150, 210, 0.35)");
-    grade.addColorStop(0.55, "rgba(255, 236, 200, 0.2)");
-    grade.addColorStop(1, "rgba(90, 120, 255, 0.3)");
+    grade.addColorStop(0, "rgba(255, 150, 210, 0.3)");
+    grade.addColorStop(0.55, "rgba(255, 236, 200, 0.18)");
+    grade.addColorStop(1, "rgba(90, 120, 255, 0.26)");
     ctx.fillStyle = grade;
     ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.68;
-    ctx.fillStyle = ctx.createPattern(paperTexture(), "repeat");
-    ctx.fillRect(0, 0, W, H);
     ctx.restore();
+    const accents = [col(profile.accentColor, 0, 10), col(pal.plantA, 4, 10), col(pal.sky0, -10, 10), "hsl(330 85% 66%)", "hsl(205 85% 62%)", "hsl(48 95% 60%)"];
+    G.wc.finish(ctx, W, H, rng, U, accents);
     const v = ctx.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
     v.addColorStop(0, "rgba(40, 10, 60, 0)");
-    v.addColorStop(1, "rgba(40, 10, 60, 0.28)");
+    v.addColorStop(1, "rgba(40, 10, 60, 0.24)");
     ctx.fillStyle = v;
     ctx.fillRect(0, 0, W, H);
-    void U;
   }
 
   function drawScene(ctx, W, H, opts) {
@@ -1563,9 +1873,20 @@
     const centerWater = hz.waterD[Math.floor(COLUMNS / 2)];
     const zMax = centerWater ? clamp(centerWater * FAR_M * 0.9, 60, 600) : 600;
 
+    G.wc.begin(Math.floor(rng() * 4294967296), U);
+    try {
+      paintScene(ctx, { planet, loc, profile, rng, U, kind, shown, pal, roadCls, halfW, cam, road, hz, zMax, biome });
+    } finally {
+      G.wc.end();
+    }
+  }
+
+  function paintScene(ctx, o) {
+    const { planet, profile, rng, U, kind, shown, pal, roadCls, halfW, cam, road, hz, zMax, biome } = o;
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
+    G.wc.setLine("pencil");
     drawSky(ctx, cam, pal, profile, rng, U);
     if (shown.stars) drawStars(ctx, cam, profile, rng, U);
     drawMoons(ctx, cam, planet, rng, U);
@@ -1591,11 +1912,15 @@
     else if (kind === "village") populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
     else populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
     addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind);
-    queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z).forEach((item) => item.draw(ctx));
+    queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z).forEach((item) => {
+      G.wc.setLine(item.pencil ? "pencil" : "pen");
+      item.draw(ctx);
+    });
+    G.wc.setLine("pencil");
 
     if (kind !== "city") drawForeground(ctx, cam, pal, biome, rng, U);
     if (shown.weather) drawWeather(ctx, cam, profile, pal, rng, U);
-    finish(ctx, cam, U);
+    finish(ctx, cam, U, pal, profile, rng);
     ctx.restore();
   }
 

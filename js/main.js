@@ -107,7 +107,22 @@
     const ctx = photo.getContext("2d");
     ctx.clearRect(0, 0, size.width, size.height);
     ctx.drawImage(photoCache.canvas, 0, 0);
+    updatePhotoCompass(G.photoKey(match), G.currentRound(match).heading);
     return true;
+  }
+
+  const DIRECTIONS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const roseState = { key: null, rot: 0 };
+
+  function updatePhotoCompass(key, heading) {
+    if (roseState.key === key) return;
+    const bearing = (((heading * 180) / Math.PI + 90) % 360 + 360) % 360;
+    const target = -bearing;
+    const delta = ((((target - roseState.rot) % 360) + 540) % 360) - 180;
+    roseState.rot += roseState.key === null ? delta : delta + 360;
+    roseState.key = key;
+    $("rose-dial").style.transform = `rotate(${roseState.rot}deg)`;
+    $("photo-compass-label").textContent = `Facing ${DIRECTIONS[Math.round(bearing / 45) % 8]}`;
   }
 
   function drawMapOnly() {
@@ -203,7 +218,6 @@
     const detail = species.detail === "none" ? "bald" : titleCase(species.detail).toLowerCase();
     const groups = [
       ["Locals", [
-        ["Species", G.describeSpecies ? G.describeSpecies(species) : `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`, "alien"],
         ["Colors", `${alienNames[profile.alienMix]}, ${profile.alienHeight}`, null],
       ]],
       ["Sky", [
@@ -243,10 +257,32 @@
       heading.textContent = title;
       const grid = document.createElement("div");
       grid.className = "clue-rows";
+      if (title === "Locals") {
+        const text = G.describeSpecies ? G.describeSpecies(species) : `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`;
+        grid.appendChild(speciesCard(profile, text));
+      }
       rows.forEach((row) => grid.appendChild(clueRow(profile, row)));
       group.append(heading, grid);
       list.appendChild(group);
     });
+  }
+
+  function speciesCard(profile, text) {
+    const card = document.createElement("div");
+    card.className = "species-card";
+    const canvas = document.createElement("canvas");
+    canvas.width = 1040;
+    canvas.height = 600;
+    G.drawSpeciesCard(canvas.getContext("2d"), profile, canvas.width, canvas.height);
+    const caption = document.createElement("div");
+    caption.className = "species-caption";
+    const name = document.createElement("span");
+    name.textContent = "Species";
+    const value = document.createElement("strong");
+    value.textContent = text;
+    caption.append(name, value);
+    card.append(canvas, caption);
+    return card;
   }
 
   function clueRow(profile, [label, text, color]) {
@@ -261,13 +297,6 @@
       const ink = profile.accentColor.l > 62 ? "#1a1024" : "#f7f4ff";
       canvas.style.background = G.cssColor(profile.accentColor);
       G.drawGlyph(canvas.getContext("2d"), profile.signGlyph, 36, 36, 46, ink);
-    } else if (color === "alien") {
-      const canvas = document.createElement("canvas");
-      canvas.className = "alien-swatch";
-      canvas.width = 120;
-      canvas.height = 120;
-      row.appendChild(canvas);
-      G.drawAlienPreview(canvas.getContext("2d"), profile, 120, 120);
     } else if (Array.isArray(color)) {
       const swatch = document.createElement("div");
       swatch.className = "swatch";

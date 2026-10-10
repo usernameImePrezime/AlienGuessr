@@ -80,6 +80,26 @@
           <div class="stage">
             <canvas id="photo" width="1280" height="720" aria-label="Alien landscape"></canvas>
             <div id="place-tag" class="place-tag" hidden></div>
+            <div id="photo-compass" class="photo-compass" aria-live="polite">
+              <svg viewBox="0 0 140 140" aria-hidden="true">
+                <path class="rose-rim" d="M70 6 C104 5 134 34 133 70 C134 106 105 135 70 134 C35 136 6 106 7 70 C5 34 36 7 70 6 Z" />
+                <path class="rose-face" d="M70 17 C99 16 123 40 122 70 C123 100 100 123 70 122 C41 124 17 100 18 70 C16 40 41 18 70 17 Z" />
+                <g id="rose-dial" class="rose-dial">
+                  <path class="rose-minor" d="M70 70 L92 48 L78 70 Z M70 70 L92 92 L70 78 Z M70 70 L48 92 L62 70 Z M70 70 L48 48 L70 62 Z" />
+                  <path class="rose-major" d="M70 70 L80 70 L70 112 L60 70 Z M70 70 L70 60 L112 70 L70 80 Z M70 70 L70 80 L28 70 L70 60 Z" />
+                  <path class="rose-north" d="M60 70 L70 26 L80 70 Z" />
+                  <text x="70" y="22" class="rose-n">N</text>
+                  <text x="122" y="74" class="rose-l">E</text>
+                  <text x="70" y="127" class="rose-l">S</text>
+                  <text x="18" y="74" class="rose-l">W</text>
+                </g>
+                <path class="rose-ahead" d="M70 1 L79 13 L61 13 Z" />
+                <circle class="eye-white" cx="70" cy="70" r="11" />
+                <circle class="eye-pupil" cx="71.5" cy="67.5" r="5" />
+                <circle class="eye-shine" cx="69.5" cy="65.5" r="1.7" />
+              </svg>
+              <span id="photo-compass-label" class="photo-compass-label">Facing N</span>
+            </div>
           </div>
         </div>
 
@@ -160,6 +180,7 @@
   <script src="js/world.js"></script>
   <script src="js/roads.js"></script>
   <script src="js/assets.js"></script>
+  <script src="js/watercolor.js"></script>
   <script src="js/props.js"></script>
   <script src="js/characters.js"></script>
   <script src="js/scene.js"></script>

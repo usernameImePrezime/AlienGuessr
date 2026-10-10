@@ -562,6 +562,101 @@ button {
   animation: pop-in 360ms cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
+.photo-compass {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  pointer-events: none;
+  filter: drop-shadow(2px 3px 0 rgba(27, 16, 51, 0.4));
+}
+
+.photo-compass svg {
+  width: 104px;
+  height: 104px;
+  overflow: visible;
+  animation: compass-bob 3.8s ease-in-out infinite;
+}
+
+.rose-rim {
+  fill: #5fb6ff;
+  stroke: var(--ink);
+  stroke-width: 3.4;
+}
+
+.rose-face {
+  fill: #fff6dc;
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  stroke-dasharray: 5 4;
+}
+
+.rose-dial {
+  transform-origin: 70px 70px;
+  transition: transform 1.3s cubic-bezier(0.3, 1.45, 0.45, 1);
+}
+
+.rose-major,
+.rose-minor,
+.rose-north,
+.rose-ahead {
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+
+.rose-major {
+  fill: #c9ddff;
+}
+
+.rose-minor {
+  fill: #ffe56b;
+}
+
+.rose-north {
+  fill: #ff4f9a;
+}
+
+.rose-ahead {
+  fill: #ffe56b;
+}
+
+.rose-n,
+.rose-l {
+  font-family: var(--display);
+  text-anchor: middle;
+  fill: var(--ink);
+}
+
+.rose-n {
+  font-size: 15px;
+  fill: #ff4f9a;
+  stroke: var(--ink);
+  stroke-width: 0.8;
+}
+
+.rose-l {
+  font-size: 12px;
+}
+
+.photo-compass .eye-pupil {
+  animation-duration: 4.8s;
+}
+
+.photo-compass-label {
+  padding: 3px 12px 4px;
+  border: 3px solid var(--ink);
+  border-radius: 14px 18px 12px 16px;
+  background: #ff8cc6;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 @keyframes pop-in {
   from {
     transform: scale(0.4) rotate(-10deg);
@@ -818,8 +913,13 @@ button {
   .compass-body,
   .compass-needle,
   .eye-pupil,
-  .compass-lids rect {
+  .compass-lids rect,
+  .photo-compass svg {
     animation: none;
+  }
+
+  .rose-dial {
+    transition: none;
   }
 }
 
@@ -994,16 +1094,59 @@ button {
   flex-shrink: 0;
 }
 
-.alien-swatch {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
-  border: 2px solid var(--ink);
-  background: radial-gradient(circle, #fff6fb, #ffd8ea);
-  flex-shrink: 0;
+.species-card {
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, #fffaf2, #ffe1ee 70%, #dcecff);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.species-card canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.species-caption {
+  padding: 8px 12px 10px;
+  background: rgba(27, 16, 51, 0.9);
+  border-top: 3px solid var(--ink);
+}
+
+.species-caption span {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.species-caption strong {
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.25;
 }
 
 @media (max-width: 1440px) {
+  .species-card canvas {
+    max-height: 190px;
+  }
+
+  .species-caption strong {
+    font-size: 15px;
+  }
+
+  .photo-compass svg {
+    width: 78px;
+    height: 78px;
+  }
+
+  .photo-compass-label {
+    font-size: 12px;
+    padding: 2px 9px 3px;
+  }
+
   .hud {
     flex-wrap: nowrap;
     padding: 6px 10px;
