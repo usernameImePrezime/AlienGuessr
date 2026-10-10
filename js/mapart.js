@@ -79,7 +79,8 @@
           if (wet[i] === 2) c = LAKE;
           else {
             const depth = clamp(-e, 0, 1);
-            c = mix(SEA_SHALLOW, SEA_DEEP, Math.sqrt(depth) * 1.15);
+            const band = Math.min(4, Math.floor((Math.sqrt(depth) * 1.15 + blot * 0.12) * 5)) / 4;
+            c = mix(SEA_SHALLOW, SEA_DEEP, band);
             c = mix(SEA_SHORE, c, clamp(depth * 22, 0, 1));
           }
           c = mix(c, [255, 255, 255], blot * 0.35 + 0.02);
@@ -113,12 +114,20 @@
 
   // ---------- contours ----------
 
-  function contourPath(t, level) {
+  function contourPath(t, level, wobble, seed) {
     const n = t.N;
     const e = t.elev;
     const s = A / n;
     const path = new Path2D();
     const lerp = (a, b) => (level - a) / (b - a || 1e-6);
+    const amp = wobble || 0;
+    const shift = (p) => {
+      if (!amp) return p;
+      return [
+        p[0] + (G.valueNoise(p[0] * 0.03, p[1] * 0.03, seed) - 0.5) * 2 * amp,
+        p[1] + (G.valueNoise(p[0] * 0.03 + 50, p[1] * 0.03, seed + 7) - 0.5) * 2 * amp,
+      ];
+    };
     for (let y = 0; y < n - 1; y++) {
       for (let x = 0; x < n - 1; x++) {
         const a = e[y * n + x];
@@ -133,7 +142,9 @@
         const right = [px + s, py + lerp(b, c) * s];
         const bottom = [px + lerp(d, c) * s, py + s];
         const left = [px, py + lerp(a, d) * s];
-        const seg = (p, q) => {
+        const seg = (p0, q0) => {
+          const p = shift(p0);
+          const q = shift(q0);
           path.moveTo(p[0], p[1]);
           path.lineTo(q[0], q[1]);
         };
@@ -257,6 +268,78 @@
     ctx.stroke();
   }
 
+  function googlyFace(ctx, x, y, r, rand, mood) {
+    ctx.lineWidth = Math.max(1.4, r * 0.18);
+    ctx.strokeStyle = INK;
+    [-1, 1].forEach((side) => {
+      const ex = x + side * r * 0.9;
+      const er = r * (0.62 + rand() * 0.18);
+      ctx.beginPath();
+      ctx.arc(ex, y, er, 0, TAU);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.stroke();
+      const a = rand() * TAU;
+      ctx.beginPath();
+      ctx.arc(ex + Math.cos(a) * er * 0.4, y + Math.sin(a) * er * 0.4, er * 0.42, 0, TAU);
+      ctx.fillStyle = INK;
+      ctx.fill();
+    });
+    ctx.beginPath();
+    if (mood === "o") {
+      ctx.ellipse(x, y + r * 1.25, r * 0.32, r * 0.42, 0, 0, TAU);
+      ctx.fillStyle = "#5a1638";
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.moveTo(x - r * 0.75, y + r * 1.0);
+      ctx.quadraticCurveTo(x, y + r * 1.75, x + r * 0.75, y + r * 1.0);
+      ctx.stroke();
+    }
+  }
+
+  function volcano(ctx, x, y, s, rand) {
+    const top = y - s;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.78, y);
+    ctx.quadraticCurveTo(x - s * 0.36, y - s * 0.5, x - s * 0.2, top);
+    ctx.lineTo(x + s * 0.2, top);
+    ctx.quadraticCurveTo(x + s * 0.36, y - s * 0.5, x + s * 0.78, y);
+    ctx.closePath();
+    ctx.fillStyle = "#b48aa8";
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.2, top);
+    ctx.quadraticCurveTo(x - s * 0.24, top + s * 0.3, x - s * 0.12, top + s * 0.42);
+    ctx.quadraticCurveTo(x - s * 0.04, top + s * 0.2, x + s * 0.02, top + s * 0.5);
+    ctx.quadraticCurveTo(x + s * 0.1, top + s * 0.22, x + s * 0.2, top);
+    ctx.closePath();
+    ctx.fillStyle = "#ff7a3d";
+    ctx.fill();
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(x, top, s * 0.2, s * 0.06, 0, 0, TAU);
+    ctx.fillStyle = "#ffe56b";
+    ctx.fill();
+    ctx.stroke();
+    const puffs = [[0, -0.28, 0.2], [-0.18, -0.48, 0.17], [0.16, -0.58, 0.22], [-0.02, -0.8, 0.26]];
+    puffs.forEach(([dx, dy, r]) => {
+      ctx.beginPath();
+      ctx.arc(x + dx * s, top + dy * s, r * s, 0, TAU);
+      ctx.fillStyle = "#f3eaf6";
+      ctx.fill();
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    });
+    googlyFace(ctx, x - s * 0.02, top - s * 0.84, s * 0.08, rand, "o");
+    googlyFace(ctx, x, y - s * 0.32, s * 0.1, rand, "smile");
+  }
+
   function hill(ctx, x, y, s, base) {
     ctx.beginPath();
     ctx.moveTo(x - s * 0.7, y);
@@ -370,7 +453,7 @@
   const WALLS = ["#ffd1e6", "#c9dcff", "#fff1a8", "#c8fbff", "#ffe0c2"];
   const ROOFS = ["#ff4f9a", "#3d7dff", "#8b5cf6", "#ff8a3d", "#22c3a6"];
 
-  function house(ctx, x, y, w, h, wall, roof, kind) {
+  function house(ctx, x, y, w, h, wall, roof, kind, face) {
     ctx.lineJoin = "round";
     ctx.lineWidth = 2.4;
     ctx.strokeStyle = INK;
@@ -397,10 +480,62 @@
     ctx.fillStyle = roof;
     ctx.fill();
     ctx.stroke();
+    if (face) {
+      const fy = y - h * 0.62;
+      const er = Math.min(w * 0.17, 4.2);
+      [-1, 1].forEach((side) => {
+        ctx.beginPath();
+        ctx.arc(x + side * w * 0.22, fy, er, 0, TAU);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x + side * w * 0.22 + er * 0.25, fy + er * 0.2, er * 0.5, 0, TAU);
+        ctx.fillStyle = INK;
+        ctx.fill();
+      });
+      ctx.beginPath();
+      ctx.arc(x, fy + er * 1.6, er * 1.2, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      return;
+    }
     ctx.fillStyle = "#ffe56b";
     const rows = Math.max(1, Math.floor(h / 11));
     for (let r = 0; r < rows; r++) {
       ctx.fillRect(x - w * 0.22, y - h + 5 + r * 10, w * 0.44, 4);
+    }
+  }
+
+  function bunting(ctx, x0, y0, x1, y1, rand) {
+    const sag = 9;
+    const pt = (k) => ({
+      x: x0 + (x1 - x0) * k,
+      y: y0 + (y1 - y0) * k + Math.sin(k * Math.PI) * sag,
+    });
+    ctx.beginPath();
+    for (let k = 0; k <= 1.001; k += 0.1) {
+      const p = pt(k);
+      if (k === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    const flags = ["#ff4f9a", "#3d7dff", "#ffe56b", "#22c3a6"];
+    const offset = Math.floor(rand() * flags.length);
+    for (let i = 1; i < 8; i++) {
+      const p = pt(i / 8);
+      ctx.beginPath();
+      ctx.moveTo(p.x - 3.4, p.y);
+      ctx.lineTo(p.x + 3.4, p.y);
+      ctx.lineTo(p.x, p.y + 7);
+      ctx.closePath();
+      ctx.fillStyle = flags[(i + offset) % flags.length];
+      ctx.fill();
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
     }
   }
 
@@ -424,8 +559,12 @@
       const wall = WALLS[Math.floor(rand() * WALLS.length)];
       const roof = ROOFS[Math.floor(rand() * ROOFS.length)];
       const kind = city ? (i === 1 ? 2 : Math.floor(rand() * 2)) : 0;
-      house(ctx, x + dx, y + 8, w, h, wall, roof, kind);
+      house(ctx, x + dx, y + 8, w, h, wall, roof, kind, rand() < (city ? 0.4 : 0.5));
     });
+    if (city) {
+      bunting(ctx, x - 24, y + 8 - 30, x - 6, y + 8 - 46, rand);
+      bunting(ctx, x - 6, y + 8 - 46, x + 13, y + 8 - 36, rand);
+    }
     if (city) {
       ctx.beginPath();
       ctx.moveTo(x - 6, y + 8 - 46 - 18);
@@ -443,52 +582,228 @@
 
   // ---------- decorations ----------
 
-  function compass(ctx, x, y, r) {
+  function inkFill(ctx, fill, width) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = width || 2.6;
+    ctx.stroke();
+  }
+
+  function waterRing(ctx, x, y, rx) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, rx * 0.28, 0, 0, TAU);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+  }
+
+  function tentacle(ctx, x, y, s, rand) {
+    const flip = rand() < 0.5 ? -1 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(flip, 1);
+    waterRing(ctx, 0, 0, s * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.3, 0);
+    ctx.bezierCurveTo(-s * 0.4, -s * 0.9, s * 0.5, -s * 1.1, s * 0.35, -s * 1.6);
+    ctx.bezierCurveTo(s * 0.3, -s * 1.9, s * 0.05, -s * 1.85, s * 0.02, -s * 1.65);
+    ctx.bezierCurveTo(s * 0.12, -s * 1.5, s * 0.25, -s * 1.2, -s * 0.05, -s * 0.85);
+    ctx.bezierCurveTo(-s * 0.2, -s * 0.6, s * 0.1, -s * 0.3, s * 0.25, 0);
+    ctx.closePath();
+    inkFill(ctx, "#b45cff", 3);
+    [[-0.08, -0.35, 0.09], [0.05, -0.7, 0.08], [0.22, -1.05, 0.07], [0.27, -1.38, 0.055]].forEach(([dx, dy, r]) => {
+      ctx.beginPath();
+      ctx.arc(dx * s, dy * s, r * s, 0, TAU);
+      inkFill(ctx, "#ffc2f0", 1.6);
+    });
+    ctx.restore();
+  }
+
+  function rubberDuck(ctx, x, y, s, rand) {
+    ctx.save();
+    ctx.translate(x, y);
+    waterRing(ctx, 0, 0, s * 1.3);
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.1, -s * 0.3, s * 0.9, s * 0.42, 0, Math.PI * 0.95, Math.PI * 2.05);
+    ctx.quadraticCurveTo(s * 0.9, -s * 0.1, s * 0.6, 0);
+    ctx.lineTo(-s * 0.85, 0);
+    ctx.closePath();
+    inkFill(ctx, "#ffe14a", 3);
+    ctx.beginPath();
+    ctx.arc(s * 0.35, -s * 0.85, s * 0.42, 0, TAU);
+    inkFill(ctx, "#ffe14a", 3);
+    ctx.beginPath();
+    ctx.moveTo(s * 0.7, -s * 0.9);
+    ctx.quadraticCurveTo(s * 1.15, -s * 0.85, s * 0.72, -s * 0.66);
+    ctx.closePath();
+    inkFill(ctx, "#ff8a3d", 2.2);
+    googlyFace(ctx, s * 0.36, -s * 0.98, s * 0.12, rand, "smile");
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.55, -s * 0.38);
+    ctx.quadraticCurveTo(-s * 0.2, -s * 0.12, s * 0.05, -s * 0.4);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.05, -s * 1.2);
+    ctx.lineTo(-s * 0.2, -s * 1.75);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.2, -s * 1.75);
+    ctx.lineTo(s * 0.25, -s * 1.62);
+    ctx.lineTo(-s * 0.15, -s * 1.48);
+    ctx.closePath();
+    inkFill(ctx, "#ff4f9a", 1.8);
+    ctx.restore();
+  }
+
+  function whale(ctx, x, y, s, rand) {
+    const flip = rand() < 0.5 ? -1 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(flip, 1);
+    waterRing(ctx, 0, s * 0.05, s * 1.3);
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.1, 0);
+    ctx.bezierCurveTo(-s * 1.1, -s * 0.9, s * 0.9, -s * 1.0, s * 1.0, -s * 0.1);
+    ctx.lineTo(s * 1.0, 0);
+    ctx.closePath();
+    inkFill(ctx, "#5aa8ff", 3);
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.0, -s * 0.15);
+    ctx.quadraticCurveTo(-s * 1.55, -s * 0.5, -s * 1.6, -s * 0.15);
+    ctx.quadraticCurveTo(-s * 1.4, -s * 0.12, -s * 1.5, s * 0.1);
+    ctx.quadraticCurveTo(-s * 1.2, -s * 0.05, -s * 1.0, -s * 0.02);
+    ctx.closePath();
+    inkFill(ctx, "#5aa8ff", 2.6);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.4, -s * 0.12);
+    ctx.quadraticCurveTo(s * 0.2, -s * 0.02, s * 0.9, -s * 0.12);
+    ctx.lineTo(s * 0.98, -s * 0.02);
+    ctx.lineTo(-s * 0.6, -s * 0.02);
+    ctx.closePath();
+    ctx.fillStyle = "#cfe6ff";
+    ctx.fill();
+    googlyFace(ctx, s * 0.45, -s * 0.42, s * 0.11, rand, "smile");
+    ctx.strokeStyle = "#e9f6ff";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 3.4;
+    [-0.5, 0, 0.5].forEach((k) => {
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.78);
+      ctx.quadraticCurveTo(k * s * 0.3, -s * 1.35, k * s * 0.75, -s * 1.15);
+      ctx.stroke();
+    });
+    [-0.75, 0, 0.75].forEach((k) => {
+      ctx.beginPath();
+      ctx.arc(k * s, -s * 1.15 - Math.abs(k) * -s * 0.05, s * 0.08, 0, TAU);
+      ctx.fillStyle = "#e9f6ff";
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function bottle(ctx, x, y, s, rand) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-0.5 + rand() * 0.3);
+    waterRing(ctx, 0, s * 0.1, s * 0.9);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.7, -s * 0.25);
+    ctx.lineTo(s * 0.25, -s * 0.25);
+    ctx.quadraticCurveTo(s * 0.45, -s * 0.12, s * 0.55, -s * 0.1);
+    ctx.lineTo(s * 0.8, -s * 0.1);
+    ctx.lineTo(s * 0.8, s * 0.1);
+    ctx.lineTo(s * 0.55, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.45, s * 0.12, s * 0.25, s * 0.25);
+    ctx.lineTo(-s * 0.7, s * 0.25);
+    ctx.closePath();
+    inkFill(ctx, "rgba(150, 240, 200, 0.85)", 2.6);
+    ctx.beginPath();
+    ctx.rect(s * 0.8, -s * 0.12, s * 0.16, s * 0.24);
+    inkFill(ctx, "#c98d5a", 2);
+    ctx.beginPath();
+    ctx.rect(-s * 0.5, -s * 0.13, s * 0.6, s * 0.26);
+    inkFill(ctx, "#fff3c4", 1.6);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, 0);
+    ctx.lineTo(0, 0);
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function sailboat(ctx, x, y, s, rand) {
+    const sail = rand() < 0.5 ? "#ff4f9a" : "#3d7dff";
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate((rand() - 0.5) * 0.2);
+    waterRing(ctx, 0, s * 0.05, s * 1.0);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.85, -s * 0.25);
+    ctx.lineTo(s * 0.85, -s * 0.25);
+    ctx.quadraticCurveTo(s * 0.6, s * 0.15, 0, s * 0.12);
+    ctx.quadraticCurveTo(-s * 0.6, s * 0.15, -s * 0.85, -s * 0.25);
+    ctx.closePath();
+    inkFill(ctx, "#ffd84a", 2.6);
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.25);
+    ctx.lineTo(0, -s * 1.6);
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s * 0.06, -s * 1.5);
+    ctx.quadraticCurveTo(s * 0.9, -s * 0.9, s * 0.7, -s * 0.4);
+    ctx.lineTo(s * 0.06, -s * 0.4);
+    ctx.closePath();
+    inkFill(ctx, sail, 2.4);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.06, -s * 1.2);
+    ctx.quadraticCurveTo(-s * 0.6, -s * 0.8, -s * 0.5, -s * 0.4);
+    ctx.lineTo(-s * 0.06, -s * 0.4);
+    ctx.closePath();
+    inkFill(ctx, "#fff", 2.2);
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 1.6);
+    ctx.lineTo(s * 0.35, -s * 1.5);
+    ctx.lineTo(0, -s * 1.4);
+    inkFill(ctx, "#ffe56b", 1.6);
+    ctx.restore();
+  }
+
+  function smilingCloud(ctx, x, y, s, rand) {
     ctx.save();
     ctx.translate(x, y);
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, TAU);
-    ctx.fillStyle = "rgba(255, 248, 230, 0.92)";
+    ctx.ellipse(s * 0.1, s * 0.75, s * 1.4, s * 0.22, 0, 0, TAU);
+    ctx.fillStyle = "rgba(40, 30, 90, 0.16)";
     ctx.fill();
+    const lumps = [[-0.9, 0.05, 0.42], [-0.35, -0.3, 0.55], [0.3, -0.38, 0.6], [0.9, -0.02, 0.45]];
+    ctx.beginPath();
+    lumps.forEach(([dx, dy, r]) => {
+      ctx.moveTo(dx * s + r * s, dy * s);
+      ctx.arc(dx * s, dy * s, r * s, 0, TAU);
+    });
+    ctx.rect(-s * 0.95, -s * 0.05, s * 1.9, s * 0.42);
     ctx.strokeStyle = INK;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.82, 0, TAU);
-    ctx.setLineDash([5, 6]);
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-    ctx.setLineDash([]);
-    for (let i = 0; i < 8; i++) {
-      const a = (i * Math.PI) / 4 - Math.PI / 2;
-      const long = i % 2 === 0;
-      const len = r * (long ? 0.95 : 0.6);
-      const w = r * (long ? 0.16 : 0.11);
-      const tip = { x: Math.cos(a) * len, y: Math.sin(a) * len };
-      const side = { x: Math.cos(a + Math.PI / 2) * w, y: Math.sin(a + Math.PI / 2) * w };
-      ctx.beginPath();
-      ctx.moveTo(tip.x, tip.y);
-      ctx.lineTo(side.x, side.y);
-      ctx.lineTo(-side.x, -side.y);
-      ctx.closePath();
-      ctx.fillStyle = long ? (i === 0 ? "#ff4f9a" : "#3d7dff") : "#ffe56b";
-      ctx.fill();
-      ctx.lineWidth = 2.2;
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.12, 0, TAU);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.stroke();
-    ctx.font = `${Math.round(r * 0.42)}px "Luckiest Guy", Fredoka, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
     ctx.lineWidth = 6;
-    ctx.strokeStyle = INK;
-    ctx.strokeText("N", 0, -r - 4);
+    ctx.lineJoin = "round";
+    ctx.stroke();
     ctx.fillStyle = "#fff";
-    ctx.fillText("N", 0, -r - 4);
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = "#e6dcff";
+    ctx.fillRect(-s * 1.5, s * 0.15, s * 3, s * 0.4);
+    ctx.restore();
+    googlyFace(ctx, 0, -s * 0.1, s * 0.13, rand, "smile");
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.45, s * 0.08, s * 0.12, s * 0.06, 0, 0, TAU);
+    ctx.ellipse(s * 0.45, s * 0.08, s * 0.12, s * 0.06, 0, 0, TAU);
+    ctx.fillStyle = "rgba(255, 110, 170, 0.55)";
+    ctx.fill();
     ctx.restore();
   }
 
@@ -654,10 +969,18 @@
   }
 
   function waveMark(ctx, x, y, s) {
+    const cx = x + s * 0.15;
+    const cy = y - s * 0.5;
     ctx.beginPath();
-    ctx.moveTo(x - s, y);
-    ctx.quadraticCurveTo(x - s * 0.5, y - s * 0.55, x, y);
-    ctx.quadraticCurveTo(x + s * 0.5, y + s * 0.55, x + s, y);
+    ctx.moveTo(x - s * 1.2, y);
+    ctx.bezierCurveTo(x - s * 0.7, y, x - s * 0.5, cy - s * 0.5, cx, cy - s * 0.42);
+    for (let k = 0; k <= 16; k++) {
+      const a = -Math.PI / 2 + (k / 16) * Math.PI * 1.6;
+      const r = s * 0.42 * (1 - k / 26);
+      ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    ctx.moveTo(cx + s * 0.38, cy + s * 0.1);
+    ctx.quadraticCurveTo(x + s * 0.7, y, x + s * 1.2, y);
     ctx.stroke();
   }
 
@@ -688,7 +1011,7 @@
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(wash.canvas, 0, 0, A, A);
 
-    const coast = contourPath(t, 0);
+    const coast = contourPath(t, 0, 3.2, ns + 3);
 
     const fx = layer();
     const fc = fx.getContext("2d");
@@ -719,8 +1042,8 @@
     sc.drawImage(wash.land, 0, 0);
     ctx.drawImage(sx, 0, 0);
 
-    [[-0.03, 0.5, 2.2], [-0.07, 0.34, 1.8], [-0.12, 0.2, 1.5]].forEach(([level, alpha, width]) => {
-      strokePath(ctx, contourPath(t, level), `rgba(40, 70, 150, ${alpha})`, width);
+    [[-0.03, 0.55, 2.6], [-0.07, 0.38, 2.1], [-0.12, 0.24, 1.7]].forEach(([level, alpha, width], i) => {
+      strokePath(ctx, contourPath(t, level, 5, ns + 20 + i), `rgba(40, 70, 150, ${alpha})`, width);
     });
     [0.3, 0.5, 0.68].forEach((level) => {
       strokePath(ctx, contourPath(t, level), "rgba(110, 70, 90, 0.2)", 1.6);
@@ -736,7 +1059,7 @@
     t.rivers.forEach((river) => river.forEach((p) => used.mark(p.x, p.y, 4)));
 
     const corners = [
-      { x: 120, y: 105 }, { x: 880, y: 105 }, { x: 120, y: 895 }, { x: 880, y: 895 },
+      { x: 120, y: 105 }, { x: 880, y: 105 }, { x: 880, y: 895 },
     ].map((c) => {
       const crowd = planet.towns.filter((town) => Math.abs(town.x - c.x) < 170 && Math.abs(town.y - c.y) < 110).length;
       return { ...c, wet: waterShare(t, c.x, c.y, 90) - crowd * 0.35 };
@@ -744,10 +1067,8 @@
     const ranked = corners.slice().sort((a, b) => b.wet - a.wet);
     const titleSpot = ranked.find((c) => c.y < 500) || ranked[0];
     const rest = ranked.filter((c) => c !== titleSpot);
-    const compassSpot = rest[0];
-    const scaleSpot = rest[1];
+    const scaleSpot = rest[0];
     used.mark(titleSpot.x, titleSpot.y, 90);
-    used.mark(compassSpot.x, compassSpot.y, 60);
     used.mark(scaleSpot.x, scaleSpot.y, 70);
 
     ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
@@ -758,11 +1079,34 @@
         const x = gx + (rand() - 0.5) * 30;
         const y = gy + (rand() - 0.5) * 30;
         if (rand() < 0.45 || G.elevationAt(t, x, y) > -0.09 || used.busy(x, y)) continue;
-        waveMark(ctx, x * K, y * K, 9 + rand() * 6);
+        const s = 9 + rand() * 6;
+        ctx.strokeStyle = "rgba(27, 16, 51, 0.35)";
+        ctx.lineWidth = 5;
+        waveMark(ctx, x * K, y * K, s);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.lineWidth = 2.6;
+        waveMark(ctx, x * K, y * K, s);
       }
     }
 
-    strokePath(ctx, coast, INK, 4.2);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    ctx.strokeStyle = "rgba(40, 70, 150, 0.45)";
+    ctx.lineWidth = 1.2;
+    for (let gy = 3; gy < 1000; gy += 7) {
+      for (let gx = 3; gx < 1000; gx += 7) {
+        const x = gx + (rand() - 0.5) * 5;
+        const y = gy + (rand() - 0.5) * 5;
+        const e = G.elevationAt(t, x, y);
+        if (e > -0.008 || e < -0.05 || rand() < 0.5) continue;
+        ctx.beginPath();
+        ctx.arc(x * K, y * K, 2.2 + rand() * 3 * (1 + e * 16), 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    strokePath(ctx, coast, INK, 4.4);
+    strokePath(ctx, contourPath(t, 0, 4.5, ns + 11), "rgba(27, 16, 51, 0.55)", 1.8);
 
     const rivers = t.rivers.map((river) => chaikin(river, 2));
     [[INK, 3.4], ["#78bdf0", 0]].forEach(([color, extra]) => {
@@ -781,19 +1125,30 @@
 
     const borders = layer();
     const bc = borders.getContext("2d");
-    bc.strokeStyle = "rgba(60, 20, 80, 0.5)";
-    bc.lineWidth = 3;
     bc.lineCap = "round";
-    bc.setLineDash([14, 11]);
-    planet.regions.forEach((region) => {
+    bc.lineJoin = "round";
+    const seam = (region) => {
       bc.beginPath();
       region.polygon.forEach((p, i) => {
         if (i === 0) bc.moveTo(p.x * K, p.y * K);
         else bc.lineTo(p.x * K, p.y * K);
       });
       bc.closePath();
+    };
+    planet.regions.forEach((region) => {
+      seam(region);
+      bc.strokeStyle = "rgba(255, 250, 235, 0.4)";
+      bc.lineWidth = 9;
       bc.stroke();
     });
+    bc.setLineDash([9, 8]);
+    planet.regions.forEach((region) => {
+      seam(region);
+      bc.strokeStyle = "rgba(160, 40, 120, 0.75)";
+      bc.lineWidth = 2.8;
+      bc.stroke();
+    });
+    bc.setLineDash([]);
     bc.globalCompositeOperation = "destination-in";
     bc.drawImage(wash.land, 0, 0);
     ctx.drawImage(borders, 0, 0);
@@ -809,7 +1164,7 @@
         const e = G.elevationAt(t, x, y);
         const m = G.moistureAt(t, x, y);
         if (e > 0.52) {
-          if (roll < 0.85) icons.push({ x, y, type: "mountain", s: 34 + (e - 0.52) * 80 + size * 12, snow: e > 0.72 });
+          if (roll < 0.85) icons.push({ x, y, e, type: "mountain", s: 34 + (e - 0.52) * 80 + size * 12, snow: e > 0.72, face: roll < 0.1 });
         } else if (e > 0.36) {
           if (roll < 0.42) icons.push({ x, y, type: "hill", s: 30 + size * 12, base: landColor(e, m) });
         } else if (e < 0.04) {
@@ -823,11 +1178,20 @@
         }
       }
     }
+    const peak = icons.reduce((best, icon) => (icon.type === "mountain" && (!best || icon.e > best.e) ? icon : best), null);
+    if (peak) {
+      peak.type = "volcano";
+      peak.s = Math.max(peak.s, 58);
+    }
     icons.sort((a, b) => a.y - b.y);
     icons.forEach((icon) => {
       const x = icon.x * K;
       const y = icon.y * K;
-      if (icon.type === "mountain") mountain(ctx, x, y, icon.s, rand, icon.snow);
+      if (icon.type === "volcano") volcano(ctx, x, y, icon.s, rand);
+      else if (icon.type === "mountain") {
+        mountain(ctx, x, y, icon.s, rand, icon.snow);
+        if (icon.face) googlyFace(ctx, x - icon.s * 0.05, y - icon.s * 0.32, icon.s * 0.09, rand, "smile");
+      }
       else if (icon.type === "hill") hill(ctx, x, y, icon.s, icon.base);
       else if (icon.type === "palm") palmIcon(ctx, x, y, icon.s, rand);
       else if (icon.type === "tree") lollipop(ctx, x, y, icon.s, rand);
@@ -912,19 +1276,33 @@
 
     planet.towns.slice().sort((a, b) => a.y - b.y).forEach((town) => townIcon(ctx, town, rand));
 
+    const doodles = [
+      (x, y) => seaMonster(ctx, x, y, 40),
+      (x, y) => ufo(ctx, x, y, 44),
+      (x, y) => whale(ctx, x, y, 38, rand),
+      (x, y) => tentacle(ctx, x, y, 52, rand),
+      (x, y) => rubberDuck(ctx, x, y, 30, rand),
+      (x, y) => sailboat(ctx, x, y, 30, rand),
+      (x, y) => bottle(ctx, x, y, 26, rand),
+      (x, y) => sailboat(ctx, x, y, 26, rand),
+    ];
     const open = [];
-    for (let i = 0; i < 400 && open.length < 2; i++) {
-      const x = 80 + rand() * 840;
-      const y = 80 + rand() * 840;
-      if (G.elevationAt(t, x, y) > -0.2 || used.busy(x, y) || waterShare(t, x, y, 50) < 1) continue;
-      if (open.some((o) => Math.hypot(o.x - x, o.y - y) < 260)) continue;
+    for (let i = 0; i < 900 && open.length < doodles.length; i++) {
+      const x = 70 + rand() * 860;
+      const y = 70 + rand() * 860;
+      const deep = open.length < 3 ? -0.2 : -0.08;
+      if (G.elevationAt(t, x, y) > deep || used.busy(x, y) || waterShare(t, x, y, open.length < 3 ? 50 : 34) < 1) continue;
+      if (open.some((o) => Math.hypot(o.x - x, o.y - y) < (open.length < 3 ? 240 : 150)) || Math.hypot(x - 100, y - 900) < 170) continue;
       open.push({ x, y });
-      used.mark(x, y, 60);
+      used.mark(x, y, 55);
     }
-    if (open[0]) seaMonster(ctx, open[0].x * K, open[0].y * K, 40);
-    if (open[1]) ufo(ctx, open[1].x * K, open[1].y * K, 44);
+    open.forEach((o, i) => doodles[i](o.x * K, o.y * K));
 
-    compass(ctx, compassSpot.x * K, compassSpot.y * K, 76);
+    const clouds = [{ x: 500, y: 48 }, { x: 500, y: 955 }, { x: 45, y: 500 }, { x: 955, y: 500 }]
+      .map((c) => ({ ...c, x: c.x + (rand() - 0.5) * 260 * (c.y !== 500 ? 1 : 0), y: c.y + (rand() - 0.5) * 260 * (c.y === 500 ? 1 : 0) }))
+      .filter((c) => waterShare(t, c.x, c.y, 40) > 0.85 && !used.busy(c.x, c.y));
+    clouds.slice(0, 2).forEach((c) => smilingCloud(ctx, c.x * K, c.y * K, 34 + rand() * 8, rand));
+
     scaleBar(ctx, scaleSpot.x * K - 50 * K, scaleSpot.y * K + 20);
     cartouche(ctx, titleSpot.x * K + (titleSpot.x < 500 ? 70 : -70), titleSpot.y * K - 30, planet.seed);
 
@@ -937,7 +1315,7 @@
       ctx.restore();
     }
 
-    planet.atlas = { canvas, size: A, ms: performance.now() - started };
+    planet.atlas = { canvas, size: A, ms: performance.now() - started, volcano: peak && { x: peak.x, y: peak.y } };
     return planet.atlas;
   }
 

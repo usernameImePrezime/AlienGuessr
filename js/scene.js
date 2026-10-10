@@ -140,10 +140,19 @@
   function drawSky(ctx, cam, pal, profile, rng, U) {
     const { W, y0 } = cam;
     const g = ctx.createLinearGradient(0, 0, 0, y0);
-    g.addColorStop(0, col(pal.sky0, -4));
+    g.addColorStop(0, col(pal.sky0, -6));
+    g.addColorStop(0.25, col(mixC(pal.sky0, pal.sky1, 0.45), -2));
     g.addColorStop(0.55, col(pal.sky1));
-    g.addColorStop(1, col(pal.glow));
+    g.addColorStop(0.82, col(mixC(pal.sky1, pal.glow, 0.6)));
+    g.addColorStop(1, col(pal.glow, 4));
     ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, y0 + 4);
+    const glowY = y0 + 10 * U;
+    const glow = ctx.createRadialGradient(W * 0.5, glowY, 0, W * 0.5, glowY, W * 0.6);
+    glow.addColorStop(0, col(pal.glow, 14, 0, 0.6));
+    glow.addColorStop(0.45, col(pal.glow, 10, 0, 0.22));
+    glow.addColorStop(1, col(pal.glow, 10, 0, 0));
+    ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, y0 + 4);
     for (let i = 0; i < 10; i++) {
       const x = rng() * W;
@@ -169,6 +178,24 @@
       ctx.moveTo(x, y);
       ctx.bezierCurveTo(x + W * 0.1, y - 12 * U, x + W * 0.22, y + 10 * U, x + W * (0.3 + rng() * 0.2), y - 4 * U);
       ctx.stroke();
+    }
+    if (rng() < 0.4) {
+      const tone = col(mixC(pal.sky1, pal.sky0, 0.5), -10, -10, 0.45);
+      const n = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) {
+        const x = W * (0.1 + rng() * 0.8);
+        const y = y0 * (0.35 + rng() * 0.35);
+        const w = (24 + rng() * 40) * U;
+        ctx.fillStyle = tone;
+        ctx.beginPath();
+        ctx.moveTo(x - w, y);
+        ctx.quadraticCurveTo(x - w * 0.9, y - w * 0.28, x - w * 0.4, y - w * 0.3);
+        ctx.quadraticCurveTo(x, y - w * 0.55, x + w * 0.45, y - w * 0.3);
+        ctx.quadraticCurveTo(x + w, y - w * 0.25, x + w, y);
+        ctx.quadraticCurveTo(x + w * 0.3, y + w * 0.15, x + w * 0.05, y + w * 0.7);
+        ctx.quadraticCurveTo(x - w * 0.3, y + w * 0.2, x - w, y);
+        ctx.fill();
+      }
     }
   }
 
@@ -198,12 +225,31 @@
       const full = rand() < 0.3;
       const rot = -0.6 + rng() * 1.2;
       if (full) {
-        paint(ctx, () => ctx.arc(x, y, r, 0, TAU), col(color), { ink: 1.4 * U, glaze: col(color, -18), edge: r * 0.3 });
+        paint(ctx, () => ctx.arc(x, y, r, 0, TAU), col(color, -14, 4), { ink: 1.6 * U });
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, TAU);
+        ctx.clip();
+        ctx.fillStyle = col(color);
+        ctx.beginPath();
+        ctx.arc(x - r * 0.16, y - r * 0.16, r * 0.92, 0, TAU);
+        ctx.fill();
         for (let k = 0; k < 3; k++) {
-          paint(ctx, () => ctx.arc(x + (rand() - 0.5) * r, y + (rand() - 0.5) * r, r * (0.12 + rand() * 0.1), 0, TAU), col(color, -10, 0, 0.7));
+          const cx = x + (rand() - 0.5) * r;
+          const cy = y + (rand() - 0.5) * r;
+          const cr = r * (0.12 + rand() * 0.1);
+          paint(ctx, () => ctx.arc(cx, cy, cr, 0, TAU), col(color, -12, 0, 0.9), { ink: 0.9 * U });
+          paint(ctx, () => ctx.arc(cx + cr * 0.2, cy + cr * 0.2, cr * 0.65, 0, TAU), col(color, -4));
         }
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.lineWidth = Math.max(1, r * 0.09);
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.76, Math.PI * 1.08, Math.PI * 1.42);
+        ctx.stroke();
+        ctx.restore();
       } else {
-        paint(ctx, () => crescentPath(ctx, x, y, r, r * 0.7, rot), col(color), { ink: 1.4 * U, glaze: col(color, -16), edge: r * 0.2 });
+        paint(ctx, () => crescentPath(ctx, x, y, r, r * 0.7, rot), col(color), { ink: 1.6 * U, glaze: col(color, -18), edge: r * 0.22 });
+        paint(ctx, () => ctx.arc(x - Math.cos(rot) * r * 0.55, y - Math.sin(rot) * r * 0.55, r * 0.08, 0, TAU), "rgba(255, 255, 255, 0.7)");
       }
     }
   }
@@ -225,8 +271,57 @@
           r: size * (0.5 + Math.cos(t * Math.PI) * 0.45 + rng() * 0.15),
         });
       }
-      G.ink.blobUnion(ctx, blobs, color, 1.3 * U);
+      flatCloud(ctx, blobs, cy + size * 0.32, color, 1.4 * U);
     }
+  }
+
+  function flatCloud(ctx, blobs, baseY, color, iw) {
+    const l = blobs[0].x;
+    const r = blobs[blobs.length - 1].x;
+    const shape = (grow) => {
+      ctx.beginPath();
+      blobs.forEach((b) => {
+        ctx.moveTo(b.x + b.r + grow, b.y);
+        ctx.arc(b.x, b.y, b.r + grow, 0, TAU);
+      });
+      ctx.rect(l, baseY - blobs[0].r, r - l, blobs[0].r);
+    };
+    const top = Math.min(...blobs.map((b) => b.y - b.r)) - iw * 2;
+    const left = Math.min(...blobs.map((b) => b.x - b.r)) - iw * 2;
+    const right = Math.max(...blobs.map((b) => b.x + b.r)) + iw * 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, right - left, baseY + iw - top);
+    ctx.clip();
+    ctx.fillStyle = INK;
+    shape(iw);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, right - left, baseY - top);
+    ctx.clip();
+    shape(0);
+    ctx.clip();
+    ctx.fillStyle = col(color);
+    ctx.fillRect(left, top, right - left, baseY - top);
+    const span = baseY - top;
+    ctx.fillStyle = col(color, -10, 6);
+    ctx.beginPath();
+    ctx.moveTo(left, baseY);
+    for (let x = left; x <= right; x += span * 0.3) {
+      ctx.lineTo(x, baseY - span * (0.24 + 0.05 * Math.sin(x * 0.07)));
+    }
+    ctx.lineTo(right, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+    blobs.forEach((b) => {
+      ctx.beginPath();
+      ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.35, b.r * 0.32, 0, TAU);
+      ctx.fill();
+    });
+    ctx.restore();
   }
 
   const STAR_PATTERNS = {
@@ -247,6 +342,15 @@
       }
       ctx.closePath();
     }, "#fffbe0", { ink: 1.1 * U });
+    const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+    halo.addColorStop(0, "rgba(255, 252, 220, 0.5)");
+    halo.addColorStop(1, "rgba(255, 252, 220, 0)");
+    ctx.fillStyle = halo;
+    ctx.fillRect(x - r * 2.2, y - r * 2.2, r * 4.4, r * 4.4);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(x - r * 0.08, y - r * 0.08, r * 0.14, 0, TAU);
+    ctx.fill();
   }
 
   function drawStars(ctx, cam, profile, rng, U) {
@@ -743,8 +847,53 @@
       g.addColorStop(0, col(mixC(asphalt, pal.sky1, 0.4)));
       g.addColorStop(1, col(asphalt, -6));
       paint(ctx, build, g, { glaze: col(asphalt, -14), edge: 10 * U });
+      ctx.fillStyle = col(asphalt, -10, 0, 0.5);
+      ctx.beginPath();
+      strip(ctx, cam, road, zs, -halfW, -halfW + 0.45);
+      strip(ctx, cam, road, zs, halfW - 0.45, halfW);
+      ctx.fill();
+      ctx.strokeStyle = col(asphalt, -18, 0, 0.75);
+      ctx.lineWidth = Math.max(0.6, 0.9 * U);
+      for (let i = 0; i < 5; i++) {
+        let z = 3.5 + rng() * 22;
+        let x = road.x(z) + (rng() - 0.5) * halfW * 1.6;
+        ctx.beginPath();
+        let p = cam.p(x, z, 0);
+        ctx.moveTo(p.x, p.y);
+        for (let k = 0; k < 4; k++) {
+          x += (rng() - 0.5) * 0.9;
+          z += 0.3 + rng() * 0.7;
+          p = cam.p(x, z, 0);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      }
+      {
+        const z = 6 + rng() * 8;
+        const p = cam.p(road.x(z) + (rng() < 0.5 ? -1 : 1) * halfW * 0.45, z, 0);
+        const rx = p.s * 0.55;
+        const ry = rx * (cam.ch / z);
+        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(asphalt, -16), { ink: inkW(p.s, U) });
+        paint(ctx, () => ctx.ellipse(p.x, p.y, rx * 0.78, ry * 0.78, 0, 0, TAU), col(asphalt, -6), { ink: inkW(p.s, U) * 0.5 });
+        stroke(ctx, () => {
+          for (let k = -2; k <= 2; k++) {
+            ctx.moveTo(p.x + k * rx * 0.25, p.y - ry * 0.7 * Math.sqrt(1 - (k * 0.25) ** 2 / 0.6));
+            ctx.lineTo(p.x + k * rx * 0.25, p.y + ry * 0.7 * Math.sqrt(1 - (k * 0.25) ** 2 / 0.6));
+          }
+        }, col(asphalt, -22), Math.max(0.6, U * 0.8));
+      }
+      if (rng() < 0.6) {
+        const z = 4 + rng() * 14;
+        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW, z, 0);
+        const rx = p.s * (0.5 + rng() * 0.5);
+        const ry = rx * (cam.ch / z);
+        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, pal.sky0, 0.4), 6), { ink: inkW(p.s, U) * 0.6 });
+        paint(ctx, () => ctx.ellipse(p.x - rx * 0.3, p.y - ry * 0.2, rx * 0.3, ry * 0.2, 0, 0, TAU), "rgba(255,255,255,0.65)");
+      }
       [-1, 1].forEach((side) => {
-        stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.6 * U);
+        const curb = { h: 240, s: 10, l: 86 };
+        paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 0.22), 0.15), col(curb), { ink: 1.1 * U });
+        stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.8 * U);
       });
       ctx.fillStyle = col(profile.pathLineColor, 10);
       for (let z = 3; z < zMax * 0.6; z += 6) {
@@ -775,6 +924,15 @@
       g.addColorStop(0, col(mixC(dirt, pal.sky1, 0.35), 6));
       g.addColorStop(1, col(dirt, -4));
       paint(ctx, build, g, { glaze: col(dirt, -22), glazeAlpha: 0.4, edge: 14 * U });
+      ctx.fillStyle = col(dirt, -12, 4, 0.55);
+      ctx.beginPath();
+      strip(ctx, cam, road, zs, -halfW - 0.1, -halfW + 0.38);
+      strip(ctx, cam, road, zs, halfW - 0.38, halfW + 0.1);
+      ctx.fill();
+      ctx.fillStyle = col(dirt, 12, -6, 0.35);
+      ctx.beginPath();
+      strip(ctx, cam, road, zs, -0.12 * halfW - 0.3, -0.12 * halfW + 0.3);
+      ctx.fill();
       [-0.45, 0.45].forEach((k) => {
         ctx.fillStyle = col(dirt, -16, 0, 0.42);
         ctx.beginPath();
@@ -803,8 +961,39 @@
         const r = Math.max(0.6 * U, p.s * (0.04 + rng() * 0.05));
         paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.3, r, 0, 0, TAU), col(dirt, -18 + rng() * 30), { ink: Math.max(0.5, U * 0.6) });
       }
-      stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW, wobL), INK, 1.5 * U);
-      stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW, wobR), INK, 1.5 * U);
+      for (let i = 0; i < 26; i++) {
+        const z = 2.6 + Math.pow(rng(), 1.6) * 24;
+        const side = rng() < 0.5 ? -1 : 1;
+        const p = cam.p(road.x(z) + side * (halfW - 0.15 - rng() * 0.3), z, 0);
+        const r = Math.max(0.8 * U, p.s * (0.07 + rng() * 0.06));
+        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.4, r, 0, 0, TAU), col(pal.rock || dirt, 6 + rng() * 14, -10), { ink: Math.max(0.6, U * 0.8) });
+        paint(ctx, () => ctx.ellipse(p.x - r * 0.4, p.y - r * 0.35, r * 0.45, r * 0.25, 0, 0, TAU), "rgba(255,255,255,0.55)");
+      }
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW, wobL), INK, 1.6 * U);
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW, wobR), INK, 1.6 * U);
+      const blade = col(pal.plantA, -4);
+      [-1, 1].forEach((side) => {
+        const wob = side < 0 ? wobL : wobR;
+        ctx.fillStyle = blade;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = Math.max(0.6, 0.8 * U);
+        ctx.beginPath();
+        for (let i = 0; i < zs.length && zs[i] < 34; i++) {
+          if (i % 2) continue;
+          const z = zs[i];
+          const p = cam.p(road.x(z) + side * halfW + wob[i], z, 0);
+          const h = p.s * (0.16 + ((i * 7) % 5) * 0.03);
+          const w = p.s * 0.08;
+          ctx.moveTo(p.x - w, p.y + h * 0.1);
+          ctx.lineTo(p.x - side * w * 0.6, p.y - h);
+          ctx.lineTo(p.x + w * 0.2, p.y + h * 0.05);
+          ctx.lineTo(p.x - side * w * 1.6, p.y - h * 0.7);
+          ctx.lineTo(p.x + w, p.y + h * 0.1);
+          ctx.closePath();
+        }
+        ctx.fill();
+        ctx.stroke();
+      });
     }
     drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax);
     if (!city) {
@@ -1335,8 +1524,15 @@
   function finish(ctx, cam, U) {
     const { W, H } = cam;
     ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    const grade = ctx.createLinearGradient(0, 0, 0, H);
+    grade.addColorStop(0, "rgba(255, 150, 210, 0.35)");
+    grade.addColorStop(0.55, "rgba(255, 236, 200, 0.2)");
+    grade.addColorStop(1, "rgba(90, 120, 255, 0.3)");
+    ctx.fillStyle = grade;
+    ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.68;
     ctx.fillStyle = ctx.createPattern(paperTexture(), "repeat");
     ctx.fillRect(0, 0, W, H);
     ctx.restore();

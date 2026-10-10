@@ -4,14 +4,6 @@ Alien Guessr asset credits
 Every file in assets/ is listed here with its author, source, and license.
 Nothing here is used without permission.
 
-assets/aliens/  (all .png files)
-  Monster Builder Pack and Alien UFO Pack by Kenney (www.kenney.nl)
-  Sources: https://kenney.nl/assets/monster-builder-pack
-           https://kenney.nl/assets/alien-ufo-pack
-  License: Creative Commons Zero (CC0 1.0), public domain.
-           See assets/aliens/License-Kenney.txt
-  The white parts are tinted pink and blue at runtime and assembled into species.
-
 assets/music/  (stargazer, space-adventure, zenostar, wacky-idlings, banana-track)
   "Stargazer" and "ZenoStar" by Centurion_of_war, "Space Adventure" by MintoDog,
   "Wacky Idlings" by Fupi, "Banana Track" by skrjablin
@@ -19,13 +11,13 @@ assets/music/  (stargazer, space-adventure, zenostar, wacky-idlings, banana-trac
   License: Creative Commons Zero (CC0 1.0), public domain.
            See assets/music/LICENSE-CC0.txt
 
-assets/sfx/  (beam, drop, lock, great, meh)
+assets/sfx/  (beam, lock, great, meh)
   "85 Short Music Jingles" by Kenney (www.kenney.nl)
   Source: https://opengameart.org/content/85-short-music-jingles
   License: Creative Commons Zero (CC0 1.0), public domain.
            See assets/sfx/License-Kenney-Jingles.txt
-  Renamed copies of jingles_PIZZA02, jingles_HIT16, jingles_HIT00,
-  jingles_NES05, and jingles_SAX04.
+  Renamed copies of jingles_PIZZA02, jingles_HIT00, jingles_NES05,
+  and jingles_SAX04.
 
 assets/fonts/LuckiestGuy-Regular.ttf
   Luckiest Guy by Astigmatic
@@ -40,7 +32,8 @@ assets/fonts/Fredoka.ttf
            See assets/fonts/OFL-Fredoka.txt
 
 Everything else
-  The landscapes, plants, critters, roads, buildings, signs, glyphs, the cartoon
-  atlas map, the paper texture, and all UI art are drawn procedurally in code
+  The alien characters and flying saucers, landscapes, plants, critters, roads,
+  buildings, signs, glyphs, the cartoon atlas map, the map compass, the map-click
+  sound, the paper texture, and all UI art are drawn or synthesized in code
   (js/*.js, css/style.css). No other images, sounds, or fonts are bundled or
   loaded from the internet.

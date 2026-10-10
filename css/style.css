@@ -632,37 +632,202 @@ button {
 
 .zoom-tools {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 18px;
+  right: 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
 .zoom-btn {
-  width: 34px;
-  height: 34px;
-  border: 2px solid var(--ink);
-  border-radius: 12px 14px 11px 15px;
-  background: #fff6c9;
+  width: 36px;
+  height: 36px;
+  border: 2.5px solid var(--ink);
+  border-radius: 58% 42% 55% 45% / 45% 55% 45% 55%;
+  background: radial-gradient(circle at 32% 28%, #fff 0 14%, transparent 15%), #ff8cc6;
   color: var(--ink);
   font-family: var(--display);
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1;
   padding: 0;
-  box-shadow: 2px 2px 0 var(--ink);
-  transition: transform 120ms ease;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 160ms cubic-bezier(0.3, 1.8, 0.5, 1), background-color 120ms ease;
+}
+
+#zoom-out {
+  background-color: #7fb2ff;
+  border-radius: 45% 55% 42% 58% / 55% 45% 58% 42%;
+  transform: rotate(4deg);
 }
 
 .zoom-btn:hover {
-  transform: translate(-1px, -1px) rotate(-4deg);
-  background: var(--yellow);
+  transform: translate(-1px, -2px) rotate(-8deg) scale(1.08);
+  background-color: var(--yellow);
+}
+
+.zoom-btn:active {
+  transform: translate(2px, 2px) scale(0.92);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.compass {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  width: 96px;
+  height: 104px;
+  pointer-events: none;
+  overflow: visible;
+  filter: drop-shadow(2px 3px 0 rgba(27, 16, 51, 0.35));
+}
+
+.compass-body {
+  transform-origin: 60px 62px;
+  animation: compass-bob 3.6s ease-in-out infinite;
+}
+
+.compass-rim {
+  fill: #ff8cc6;
+  stroke: var(--ink);
+  stroke-width: 3.2;
+}
+
+.compass-face {
+  fill: #fff6dc;
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  stroke-dasharray: 5 4;
+}
+
+.compass-ticks circle {
+  fill: var(--ink);
+}
+
+.compass-flag {
+  fill: #ffe56b;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.compass-n {
+  font-family: var(--display);
+  font-size: 12px;
+  fill: var(--ink);
+  text-anchor: middle;
+}
+
+.compass-needle {
+  transform-origin: 60px 62px;
+  animation: needle-wobble 2.8s ease-in-out infinite;
+}
+
+.needle-north,
+.needle-south {
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.needle-north {
+  fill: #ff4f9a;
+}
+
+.needle-south {
+  fill: #3d7dff;
+}
+
+.eye-white {
+  fill: #fff;
+  stroke: var(--ink);
+  stroke-width: 2.2;
+}
+
+.eye-pupil {
+  fill: var(--ink);
+  animation: pupil-dart 5.5s steps(1) infinite;
+}
+
+.eye-shine {
+  fill: #fff;
+}
+
+.compass-lids rect {
+  fill: #ff8cc6;
+  stroke: var(--ink);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center top;
+  transform: scaleY(0);
+  animation: compass-blink 4.2s infinite;
+}
+
+.compass-mouth {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.compass.is-spinning .compass-needle {
+  animation: needle-spin 1.3s cubic-bezier(0.2, 0.7, 0.3, 1.25);
+}
+
+.compass.is-spinning .compass-body {
+  animation: compass-hop 1.3s ease-out;
+}
+
+@keyframes compass-bob {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50% { transform: rotate(3deg) translateY(-2px); }
+}
+
+@keyframes needle-wobble {
+  0%, 100% { transform: rotate(-7deg); }
+  50% { transform: rotate(7deg); }
+}
+
+@keyframes needle-spin {
+  0% { transform: rotate(0deg); }
+  70% { transform: rotate(1100deg); }
+  85% { transform: rotate(1070deg); }
+  100% { transform: rotate(1080deg); }
+}
+
+@keyframes compass-hop {
+  0% { transform: scale(1); }
+  20% { transform: scale(1.18, 0.86) translateY(4px); }
+  45% { transform: scale(0.92, 1.12) translateY(-8px); }
+  100% { transform: scale(1); }
+}
+
+@keyframes compass-blink {
+  0%, 92%, 100% { transform: scaleY(0); }
+  95% { transform: scaleY(1); }
+}
+
+@keyframes pupil-dart {
+  0% { transform: translate(0, 0); }
+  30% { transform: translate(-3px, 1px); }
+  55% { transform: translate(2px, 3px); }
+  80% { transform: translate(-1px, -1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compass-body,
+  .compass-needle,
+  .eye-pupil,
+  .compass-lids rect {
+    animation: none;
+  }
 }
 
 .zoom-btn.small {
   font-family: var(--body);
   font-weight: 600;
   font-size: 12px;
+  background-color: #fff6c9;
 }
 
 .sound-ctl {
@@ -860,6 +1025,13 @@ button {
   .chip {
     padding: 5px 10px;
     white-space: nowrap;
+  }
+
+  .compass {
+    left: 12px;
+    bottom: 10px;
+    width: 72px;
+    height: 78px;
   }
 }
 

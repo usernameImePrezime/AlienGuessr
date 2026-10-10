@@ -77,31 +77,67 @@
     ctx.quadraticCurveTo(cx - nx * w, cy - ny * w, x0, y0);
   }
 
-  function blobUnion(ctx, blobs, color, iw) {
+  function blobUnion(ctx, blobs, color, iw, o) {
+    const opts = o || {};
     ctx.fillStyle = INK;
     blobs.forEach((b) => {
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r + iw, 0, TAU);
       ctx.fill();
     });
+    let l = Infinity;
+    let r = -Infinity;
+    let t = Infinity;
+    let btm = -Infinity;
+    ctx.beginPath();
+    blobs.forEach((b) => {
+      ctx.moveTo(b.x + b.r, b.y);
+      ctx.arc(b.x, b.y, b.r, 0, TAU);
+      l = Math.min(l, b.x - b.r);
+      r = Math.max(r, b.x + b.r);
+      t = Math.min(t, b.y - b.r);
+      btm = Math.max(btm, b.y + b.r);
+    });
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = col(color, -15, 6);
+    ctx.fillRect(l - 2, t - 2, r - l + 4, btm - t + 4);
     ctx.fillStyle = col(color);
     blobs.forEach((b) => {
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, TAU);
+      ctx.arc(b.x - b.r * 0.1, b.y - b.r * 0.17, b.r * 0.9, 0, TAU);
       ctx.fill();
     });
-    ctx.fillStyle = col(color, -12, 4, 0.5);
+    ctx.fillStyle = col(color, 11, -4, 0.75);
     blobs.forEach((b) => {
       ctx.beginPath();
-      ctx.arc(b.x + b.r * 0.12, b.y + b.r * 0.3, b.r * 0.62, 0, TAU);
+      ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.36, b.r * 0.4, 0, TAU);
       ctx.fill();
     });
-    ctx.fillStyle = col(color, 12, -4, 0.32);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = col(color, 28, -10, 0.85);
     blobs.forEach((b) => {
+      if (b.r < 3) return;
+      ctx.lineWidth = Math.max(0.8, b.r * 0.09);
       ctx.beginPath();
-      ctx.arc(b.x - b.r * 0.28, b.y - b.r * 0.3, b.r * 0.32, 0, TAU);
-      ctx.fill();
+      ctx.arc(b.x, b.y, b.r * 0.76, Math.PI * 1.12, Math.PI * 1.42);
+      ctx.stroke();
     });
+    if (!opts.smooth) {
+      ctx.strokeStyle = col(color, -26, 8, 0.6);
+      blobs.forEach((b, i) => {
+        if (b.r < 5) return;
+        ctx.lineWidth = Math.max(0.6, b.r * 0.05);
+        const sx = b.x + b.r * (i % 2 ? 0.3 : -0.05);
+        const sy = b.y + b.r * (i % 2 ? 0.05 : 0.32);
+        ctx.beginPath();
+        ctx.arc(sx, sy, b.r * 0.16, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.moveTo(sx + b.r * 0.42, sy - b.r * 0.12);
+        ctx.arc(sx + b.r * 0.28, sy - b.r * 0.12, b.r * 0.14, 0, Math.PI * 0.85);
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
   }
 
   function shadowBlob(ctx, x, y, rx, ry) {
@@ -127,7 +163,21 @@
       });
     }
     shadowBlob(ctx, x, y, r0 * 0.95, r0 * 0.16);
-    blobUnion(ctx, blobs, color, inkW(s, U));
+    const iw = inkW(s, U);
+    blobUnion(ctx, blobs, color, iw);
+    if (r0 > 6 && rand() < 0.4) {
+      const berry = rand() < 0.5 ? { h: 340, s: 85, l: 62 } : { h: 210, s: 85, l: 64 };
+      const count = 3 + Math.floor(rand() * 4);
+      for (let i = 0; i < count; i++) {
+        const b = blobs[i % blobs.length];
+        const a = rand() * TAU;
+        const bx = b.x + Math.cos(a) * b.r * 0.5;
+        const by = b.y + Math.sin(a) * b.r * 0.5;
+        const br = Math.max(1, r0 * 0.07);
+        paint(ctx, () => ctx.arc(bx, by, br, 0, TAU), col(berry), { ink: iw * 0.7 });
+        paint(ctx, () => ctx.arc(bx - br * 0.35, by - br * 0.35, br * 0.3, 0, TAU), "rgba(255, 255, 255, 0.85)");
+      }
+    }
   }
 
   function tree(ctx, x, y, s, h, color, trunk, rand, U) {
@@ -140,21 +190,43 @@
     const w0 = Math.max(1, H * 0.07);
     const w1 = Math.max(0.6, H * 0.035);
     shadowBlob(ctx, x, y, H * 0.3, H * 0.05);
+    const bend = (rand() - 0.5) * H * 0.18;
+    const midX = (x + tx) / 2 + bend;
+    const midY = y - H * 0.32;
     paint(ctx, () => {
-      ctx.moveTo(x - w0, y);
-      ctx.quadraticCurveTo(x - w0 + lean * H * 0.6, y - H * 0.35, tx - w1, ty);
+      ctx.moveTo(x - w0 * 2.1, y);
+      ctx.quadraticCurveTo(x - w0 * 1.05, y - H * 0.015, x - w0, y - H * 0.09);
+      ctx.quadraticCurveTo(midX - w0 * 0.9, midY, tx - w1, ty);
       ctx.lineTo(tx + w1, ty);
-      ctx.quadraticCurveTo(x + w0 + lean * H * 0.6, y - H * 0.35, x + w0, y);
+      ctx.quadraticCurveTo(midX + w0 * 0.9, midY, x + w0, y - H * 0.09);
+      ctx.quadraticCurveTo(x + w0 * 1.05, y - H * 0.015, x + w0 * 2.1, y);
       ctx.closePath();
-    }, col(trunk), { ink: iw });
-    const blobs = [];
-    const n = 4 + Math.floor(rand() * 3);
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + rand();
-      const rr = H * (0.16 + rand() * 0.08);
-      blobs.push({ x: tx + Math.cos(a) * H * 0.16, y: ty - H * 0.1 + Math.sin(a) * H * 0.12, r: rr });
+    }, col(trunk), { ink: iw, glaze: col(trunk, -20), edge: w0 * 0.9 });
+    if (H > 24) {
+      ctx.strokeStyle = col(trunk, -24, 0, 0.8);
+      ctx.lineWidth = Math.max(0.6, iw * 0.6);
+      ctx.lineCap = "round";
+      for (let i = 0; i < 3; i++) {
+        const k = 0.2 + i * 0.2 + rand() * 0.08;
+        const px = (1 - k) * (1 - k) * x + 2 * (1 - k) * k * midX + k * k * tx;
+        const py = (1 - k) * (1 - k) * y + 2 * (1 - k) * k * midY + k * k * ty;
+        const w = (w0 + (w1 - w0) * k) * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(px - w, py);
+        ctx.quadraticCurveTo(px, py - w * 0.7, px + w * 0.3, py + w * 0.2);
+        ctx.stroke();
+      }
     }
-    blobs.push({ x: tx, y: ty - H * 0.12, r: H * 0.2 });
+    const blobs = [];
+    const n = 5 + Math.floor(rand() * 3);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + rand() * 0.6;
+      const rr = H * (0.15 + rand() * 0.08);
+      blobs.push({ x: tx + Math.cos(a) * H * 0.18, y: ty - H * 0.12 + Math.sin(a) * H * 0.12, r: rr });
+    }
+    blobs.push({ x: tx, y: ty - H * 0.16, r: H * 0.21 });
+    blobs.push({ x: tx - H * 0.1, y: ty + H * 0.02, r: H * 0.1 });
+    blobs.push({ x: tx + H * 0.12, y: ty + H * 0.01, r: H * 0.09 });
     blobUnion(ctx, blobs, color, iw);
   }
 
@@ -251,6 +323,7 @@
       paint(ctx, () => ctx.ellipse(sx, sy, rx * 0.12, ry * 0.11, 0, 0, TAU), "rgba(255, 250, 245, 0.92)", { ink: iw * 0.6 });
     }
     ctx.restore();
+    paint(ctx, () => ctx.ellipse(tx - rx * 0.5, ty - ry * 0.5, rx * 0.16, ry * 0.08, -0.6, 0, TAU), "rgba(255, 255, 255, 0.7)");
   }
 
   function tentacle(ctx, x, y, s, h, color, rand, U) {
@@ -682,7 +755,7 @@
       const d = H * (0.08 + rand() * 0.14);
       puffs.push({ x: tx + Math.cos(a) * d * 1.3, y: ty - H * 0.08 + Math.sin(a) * d, r: H * (0.12 + rand() * 0.07) });
     }
-    blobUnion(ctx, puffs, { h: color.h, s: clamp(color.s, 40, 70), l: clamp(color.l + 18, 70, 88) }, iw);
+    blobUnion(ctx, puffs, { h: color.h, s: clamp(color.s, 40, 70), l: clamp(color.l + 18, 70, 88) }, iw, { smooth: true });
     puffs.slice(0, 3).forEach((p) => {
       paint(ctx, () => ctx.arc(p.x - p.r * 0.2, p.y - p.r * 0.25, p.r * 0.4, 0, TAU), "rgba(255, 255, 255, 0.55)");
     });
@@ -968,12 +1041,24 @@
     ctx.closePath();
   }
 
+  function polyFace(ctx, face, pts) {
+    pts.forEach(([u, v], i) => {
+      const p = face(u, v);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath();
+  }
+
+  const FRAME = "#fff4e6";
+
   function windowShape(ctx, face, style, u, v, w, h, glass, iw) {
     const frame = iw;
     if (style === "round") {
       const r = Math.min(w, h) / 2;
+      paint(ctx, () => ellipsePath(ctx, face, u + w / 2, v + h / 2, r * 1.22, r * 1.22), FRAME, { ink: frame });
       paint(ctx, () => ellipsePath(ctx, face, u + w / 2, v + h / 2, r, r), glass, { ink: frame });
-      paint(ctx, () => ellipsePath(ctx, face, u + w / 2 - r * 0.25, v + h / 2 + r * 0.25, r * 0.3, r * 0.3), "rgba(255,255,255,0.55)");
+      paint(ctx, () => ellipsePath(ctx, face, u + w / 2 - r * 0.3, v + h / 2 + r * 0.3, r * 0.28, r * 0.28), "rgba(255,255,255,0.7)");
       return;
     }
     if (style === "arch") {
@@ -993,7 +1078,10 @@
       }
       return;
     }
+    const fw = Math.min(w, h) * 0.14;
+    paint(ctx, () => quadPath(ctx, face, u - fw, v - fw * 1.6, u + w + fw, v + h + fw), FRAME, { ink: frame });
     paint(ctx, () => quadPath(ctx, face, u, v, u + w, v + h), glass, { ink: frame });
+    paint(ctx, () => polyFace(ctx, face, [[u + w * 0.12, v + h * 0.92], [u + w * 0.36, v + h * 0.92], [u + w * 0.12, v + h * 0.48]]), "rgba(255,255,255,0.5)");
     if (style === "grid") {
       stroke(ctx, () => {
         let a = face(u + w / 2, v);
@@ -1006,9 +1094,8 @@
         ctx.lineTo(b.x, b.y);
       }, INK, frame * 0.7);
     } else {
-      paint(ctx, () => quadPath(ctx, face, u - w * 0.08, v - h * 0.1, u + w * 1.08, v), col({ h: 30, s: 20, l: 88 }), { ink: frame * 0.7 });
+      paint(ctx, () => quadPath(ctx, face, u - w * 0.2, v - h * 0.22, u + w * 1.2, v - fw * 0.8), col({ h: 30, s: 20, l: 88 }), { ink: frame * 0.8 });
     }
-    paint(ctx, () => quadPath(ctx, face, u + w * 0.12, v + h * 0.55, u + w * 0.3, v + h * 0.85), "rgba(255,255,255,0.45)");
   }
 
   function glassColor(rand) {
@@ -1112,8 +1199,27 @@
       ctx.lineTo(c.x, c.y);
     }
     ctx.stroke();
+    paint(ctx, () => quadPath(ctx, front, 0, 0, w, 0.3), "rgba(27, 16, 51, 0.16)");
+    paint(ctx, () => quadPath(ctx, sideFace, 0, 0, d, 0.3), "rgba(27, 16, 51, 0.2)");
     const doorU = w * (0.28 + rand() * 0.2);
-    paint(ctx, () => archPath(ctx, front, doorU, 0, doorU + 0.9, 2.05), col(b.wall, -40, 10), { ink: iw });
+    const doorColor = col(b.wall, -40, 10);
+    paint(ctx, () => archPath(ctx, front, doorU - 0.1, 0, doorU + 1.0, 2.2), FRAME, { ink: iw });
+    paint(ctx, () => archPath(ctx, front, doorU, 0, doorU + 0.9, 2.05), doorColor, { ink: iw, glaze: col(b.wall, -55, 10), edge: 3 * iw });
+    const knob = front(doorU + 0.72, 1.0);
+    paint(ctx, () => ctx.arc(knob.x, knob.y, Math.max(1, s * 0.09), 0, TAU), "#ffd84a", { ink: iw * 0.7 });
+    paint(ctx, () => quadPath(ctx, front, doorU - 0.25, -0.02, doorU + 1.15, 0.16), col({ h: 30, s: 12, l: 70 }), { ink: iw * 0.8 });
+    if (rand() < 0.6) {
+      const potU = doorU < w / 2 ? doorU + 1.35 : doorU - 0.55;
+      if (potU > 0.1 && potU < w - 0.4) {
+        paint(ctx, () => polyFace(ctx, front, [[potU, 0], [potU + 0.36, 0], [potU + 0.42, 0.42], [potU - 0.06, 0.42]]), col({ h: 18, s: 60, l: 55 }), { ink: iw * 0.8 });
+        const petal = rand() < 0.5 ? { h: 330, s: 85, l: 68 } : { h: 50, s: 95, l: 66 };
+        [[0.0, 0.62], [0.18, 0.75], [0.36, 0.6]].forEach(([du, dv]) => {
+          const p = front(potU + du, dv);
+          paint(ctx, () => ctx.arc(p.x, p.y, Math.max(1, s * 0.13), 0, TAU), col(petal), { ink: iw * 0.6 });
+          paint(ctx, () => ctx.arc(p.x, p.y, Math.max(0.5, s * 0.05), 0, TAU), "#fff3a8");
+        });
+      }
+    }
     const winU = doorU < w / 2 ? doorU + 1.3 : doorU - 1.5;
     if (winU > 0.15 && winU + 1 < w - 0.1) {
       windowShape(ctx, front, b.windowStyle, winU, 1.1, 0.95, 0.85, glassColor(rand), iw);
@@ -1143,7 +1249,26 @@
       paint(ctx, () => quadPath(ctx, front, w * 0.12, h - 0.75, w * 0.88, h - 0.12), col(board), { ink: iw, glaze: col(board, -20), edge: 3 * iw });
       glyphText(ctx, front, w * 0.16, h - 0.72, w * 0.68, 0.56, b.glyphs, INK, iw);
     }
+    const shape = b.roofShape;
+    const peak = shape === "spike" ? w * 0.75 : shape === "dome" ? w * 0.5 : w * 0.32;
     roofOnFront(ctx, view, b, iw, b.roof);
+    if (shape && shape !== "flat" && shape !== "dome" && rand() < 0.55) {
+      const cu = w * 0.7;
+      const mid = cu + 0.22;
+      const roofV = h + peak * (shape === "spike"
+        ? (w + 0.3 - mid) / (w / 2 + 0.3)
+        : Math.pow(Math.sin(((mid + 0.3) / (w + 0.6)) * Math.PI), 0.6));
+      const top = roofV + 0.9;
+      paint(ctx, () => quadPath(ctx, front, cu, roofV - 0.25, cu + 0.45, top), col({ h: 10, s: 45, l: 52 }), {
+        ink: iw, glaze: col({ h: 10, s: 45, l: 38 }), edge: 3 * iw,
+      });
+      paint(ctx, () => quadPath(ctx, front, cu - 0.08, top - 0.12, cu + 0.53, top + 0.1), col({ h: 10, s: 30, l: 32 }), { ink: iw });
+      const puff = front(cu + 0.22, top + 0.55);
+      const pr = Math.max(1.5, s * 0.22);
+      [[0, 0, 1], [0.7, -1.2, 1.25], [1.7, -2.5, 1.5]].forEach(([dx, dy, m]) => {
+        paint(ctx, () => ctx.arc(puff.x + dx * pr, puff.y + dy * pr, pr * m, 0, TAU), "rgba(250, 246, 255, 0.85)", { ink: iw * 0.6 });
+      });
+    }
   }
 
   function building(ctx, view, b, U) {
@@ -1156,6 +1281,13 @@
     paint(ctx, () => quadPath(ctx, front, 0, 0, w, h), col(b.wall, -10), { ink: iw, glaze: col(b.wall, -24), edge: 4 * iw });
     paint(ctx, () => quadPath(ctx, facade, 0, 0, d, h), col(b.wall), { ink: iw, glaze: col(b.wall, -22), edge: 6 * iw });
     paint(ctx, () => quadPath(ctx, facade, 0, 0, d, 0.4), col(b.wall, -26), { ink: iw * 0.7 });
+    paint(ctx, () => quadPath(ctx, front, 0, 0, w, 0.5), "rgba(27, 16, 51, 0.2)");
+    stroke(ctx, () => {
+      const a = facade(0.05, h - 0.2);
+      const c = facade(0.05, 0.5);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(c.x, c.y);
+    }, col(b.wall, 16, -6, 0.8), Math.max(1, iw * 1.4));
     const floors = Math.max(1, Math.floor((h - 3.4) / 3.1));
     const cols = Math.max(1, Math.floor((d - 0.8) / 2.5));
     const step = d / cols;
@@ -1255,12 +1387,46 @@
       });
     }
     roofOnFront(ctx, view, b, iw, b.roof);
-    if (!b.roofShape && rand() < 0.5) {
+    const topper = !b.roofShape || b.roofShape === "flat" ? rand() : 1;
+    const r = view.p(xa, z0, 0).s * 0.8;
+    const metal = col({ h: 220, s: 14, l: 78 });
+    if (topper < 0.3) {
       const tank = front(w * 0.5, h + 0.35);
-      const r = view.p(xa, z0, 0).s * 0.8;
+      paint(ctx, () => ctx.rect(tank.x - r, tank.y - r * 1.6, r * 2, r * 1.6), col({ h: 200, s: 14, l: 72 }), {
+        ink: iw, glaze: col({ h: 200, s: 14, l: 56 }), edge: 3 * iw,
+      });
+      paint(ctx, () => ctx.ellipse(tank.x, tank.y - r * 1.6, r, r * 0.3, 0, 0, TAU), col({ h: 200, s: 14, l: 82 }), { ink: iw });
+    } else if (topper < 0.6) {
+      const base = front(w * 0.45, h + 0.4);
+      stroke(ctx, () => {
+        ctx.moveTo(base.x, base.y);
+        ctx.lineTo(base.x + r * 0.2, base.y - r * 1.2);
+      }, INK, iw * 1.2);
+      ctx.save();
+      ctx.translate(base.x + r * 0.2, base.y - r * 1.3);
+      ctx.rotate(-0.6);
       paint(ctx, () => {
-        ctx.rect(tank.x - r, tank.y - r * 1.6, r * 2, r * 1.6);
-      }, col({ h: 200, s: 14, l: 72 }), { ink: iw });
+        ctx.ellipse(0, 0, r * 1.3, r * 0.55, 0, 0, Math.PI);
+        ctx.closePath();
+      }, metal, { ink: iw, glaze: col({ h: 220, s: 14, l: 60 }), edge: 3 * iw });
+      stroke(ctx, () => {
+        ctx.moveTo(0, r * 0.1);
+        ctx.lineTo(0, -r * 0.7);
+      }, INK, iw);
+      paint(ctx, () => ctx.arc(0, -r * 0.75, Math.max(1, r * 0.18), 0, TAU), "#ff4f9a", { ink: iw * 0.7 });
+      ctx.restore();
+    } else if (topper < 0.85) {
+      const base = front(w * 0.6, h + 0.4);
+      const tip = { x: base.x, y: base.y - r * 3.4 };
+      stroke(ctx, () => {
+        ctx.moveTo(base.x, base.y);
+        ctx.lineTo(tip.x, tip.y);
+        ctx.moveTo(tip.x - r * 0.7, tip.y + r * 0.9);
+        ctx.lineTo(tip.x + r * 0.7, tip.y + r * 0.9);
+        ctx.moveTo(tip.x - r * 0.45, tip.y + r * 1.6);
+        ctx.lineTo(tip.x + r * 0.45, tip.y + r * 1.6);
+      }, INK, iw * 1.1);
+      paint(ctx, () => ctx.arc(tip.x, tip.y, Math.max(1.2, r * 0.25), 0, TAU), "#5ff2ff", { ink: iw * 0.7 });
     }
   }
 
@@ -1646,37 +1812,39 @@
     ctx.restore();
   }
 
-  const shipCache = new Map();
   function ship(ctx, x, y, size, name, tilt) {
-    if (!shipCache.has(name)) {
-      const img = G.assetImage(name);
-      let canvas = null;
-      if (img) {
-        const t = 5;
-        const base = document.createElement("canvas");
-        base.width = img.naturalWidth + t * 2;
-        base.height = img.naturalHeight + t * 2;
-        const bctx = base.getContext("2d");
-        for (let i = 0; i < 16; i++) {
-          const a = (i / 16) * TAU;
-          bctx.drawImage(img, t + Math.cos(a) * t, t + Math.sin(a) * t);
-        }
-        bctx.globalCompositeOperation = "source-in";
-        bctx.fillStyle = INK;
-        bctx.fillRect(0, 0, base.width, base.height);
-        bctx.globalCompositeOperation = "source-over";
-        bctx.drawImage(img, t, t);
-        canvas = base;
-      }
-      shipCache.set(name, canvas);
-    }
-    const canvas = shipCache.get(name);
-    if (!canvas) return;
-    const k = size / canvas.width;
+    const r = size / 2;
+    if (r < 3) return;
+    const pink = name.indexOf("Pink") >= 0;
+    const manned = name.indexOf("manned") >= 0;
+    const hull = pink ? { h: 330, s: 85, l: 70 } : { h: 220, s: 85, l: 68 };
+    const iw = Math.max(1, r * 0.06);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(tilt || 0);
-    ctx.drawImage(canvas, (-canvas.width * k) / 2, (-canvas.height * k) / 2, canvas.width * k, canvas.height * k);
+    const beam = ctx.createLinearGradient(0, r * 0.2, 0, r * 1.6);
+    beam.addColorStop(0, "rgba(255, 240, 150, 0.35)");
+    beam.addColorStop(1, "rgba(255, 240, 150, 0)");
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.35, r * 0.2);
+    ctx.lineTo(-r * 0.7, r * 1.6);
+    ctx.lineTo(r * 0.7, r * 1.6);
+    ctx.lineTo(r * 0.35, r * 0.2);
+    ctx.closePath();
+    ctx.fill();
+    paint(ctx, () => ctx.arc(0, -r * 0.1, r * 0.42, Math.PI, 0), "rgba(200, 250, 255, 0.85)", { ink: iw });
+    if (manned) {
+      paint(ctx, () => ctx.ellipse(0, -r * 0.2, r * 0.2, r * 0.24, 0, 0, TAU), pink ? "#62a0ff" : "#ff7ab6", { ink: iw * 0.8 });
+      paint(ctx, () => ctx.arc(0, -r * 0.24, r * 0.09, 0, TAU), "#fff", { ink: iw * 0.6 });
+      paint(ctx, () => ctx.arc(r * 0.02, -r * 0.23, r * 0.045, 0, TAU), INK);
+    }
+    paint(ctx, () => ctx.arc(-r * 0.18, -r * 0.3, r * 0.08, 0, TAU), "rgba(255, 255, 255, 0.8)");
+    paint(ctx, () => ctx.ellipse(0, 0, r, r * 0.3, 0, 0, TAU), col(hull), { ink: iw, glaze: col(hull, -22), edge: r * 0.12 });
+    paint(ctx, () => ctx.ellipse(0, r * 0.12, r * 0.5, r * 0.1, 0, 0, TAU), col(hull, -20));
+    for (let i = -3; i <= 3; i++) {
+      paint(ctx, () => ctx.arc(i * r * 0.26, r * 0.02, r * 0.06, 0, TAU), i % 2 ? "#ffe56b" : "#5ff2ff", { ink: iw * 0.5 });
+    }
     ctx.restore();
   }
 

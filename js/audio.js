@@ -8,7 +8,6 @@
   ];
   const SFX = {
     beam: "assets/sfx/beam.ogg",
-    drop: "assets/sfx/drop.ogg",
     lock: "assets/sfx/lock.ogg",
     great: "assets/sfx/great.ogg",
     meh: "assets/sfx/meh.ogg",
@@ -170,8 +169,56 @@
     else apply();
   }
 
+  let synth = null;
+  let lastBoop = 0;
+  let boops = 0;
+
+  function boop() {
+    const now = performance.now();
+    if (now - lastBoop < 80) return;
+    lastBoop = now;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!synth) synth = new Ctx();
+      if (synth.state === "suspended") synth.resume().catch(() => {});
+      const t = synth.currentTime + 0.005;
+      const peak = Math.min(1, state.volume) * 0.25;
+      const base = boops++ % 2 ? 620 : 560;
+      const out = synth.createGain();
+      out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + 0.012);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      out.connect(synth.destination);
+      const body = synth.createOscillator();
+      body.type = "sine";
+      body.frequency.setValueAtTime(base, t);
+      body.frequency.exponentialRampToValueAtTime(base * 0.55, t + 0.14);
+      body.connect(out);
+      const plip = synth.createOscillator();
+      const plipGain = synth.createGain();
+      plip.type = "triangle";
+      plip.frequency.setValueAtTime(base * 2.5, t);
+      plip.frequency.exponentialRampToValueAtTime(base * 1.6, t + 0.06);
+      plipGain.gain.setValueAtTime(0.35, t);
+      plipGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      plip.connect(plipGain).connect(out);
+      body.start(t);
+      plip.start(t);
+      body.stop(t + 0.22);
+      plip.stop(t + 0.1);
+    } catch (error) {
+      // audio output is optional
+    }
+  }
+
   function sfx(name) {
-    if (state.muted || !SFX[name]) return;
+    if (state.muted) return;
+    if (name === "drop") {
+      boop();
+      return;
+    }
+    if (!SFX[name]) return;
     try {
       const el = new Audio(SFX[name]);
       el.volume = Math.min(1, state.volume * 0.9);

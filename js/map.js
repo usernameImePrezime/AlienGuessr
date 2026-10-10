@@ -43,14 +43,22 @@
 
   // ---------- labels ----------
 
-  function ribbon(ctx, text, x, y, size, rects) {
+  function jitter(a, b) {
+    const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  }
+
+  function ribbon(ctx, text, x, y, size, rects, tilt) {
     ctx.font = `${size}px "Luckiest Guy", Fredoka, sans-serif`;
     const w = ctx.measureText(text).width + size * 1.1;
     const h = size * 1.45;
-    const rect = { l: x - w / 2 - size * 0.6, r: x + w / 2 + size * 0.6, t: y - h / 2, b: y + h / 2 };
+    const rect = { l: x - w / 2 - size * 0.6, r: x + w / 2 + size * 0.6, t: y - h / 2 - size * 0.3, b: y + h / 2 + size * 0.3 };
     if (rects.some((o) => rect.l < o.r && rect.r > o.l && rect.t < o.b && rect.b > o.t)) return;
     rects.push(rect);
     ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt || 0);
+    ctx.translate(-x, -y);
     ctx.lineJoin = "round";
     ctx.strokeStyle = INK;
     ctx.lineWidth = Math.max(1.5, size * 0.14);
@@ -108,7 +116,7 @@
       if (p.x < -60 || p.y < -60 || p.x > width + 60 || p.y > height + 60) return;
       const below = p.y + (city ? 24 : 16) * atlasScale + (city ? 11 : 8) * unit;
       const grow = Math.min(view.zoom, 3);
-      if (city) ribbon(ctx, town.name, p.x, below, (8.8 + grow * 1.2) * unit, rects);
+      if (city) ribbon(ctx, town.name, p.x, below, (8.8 + grow * 1.2) * unit, rects, (jitter(town.x, town.y) - 0.5) * 0.16);
       else haloText(ctx, town.name, p.x, below, (8.5 + grow * 1) * unit, rects);
     });
   }
@@ -185,13 +193,54 @@
     ctx.restore();
   }
 
+  function tornEdge(width, height, unit) {
+    const pts = [];
+    const step = 13 * unit;
+    const edge = (x0, y0, x1, y1, nx, ny, salt) => {
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      const n = Math.max(2, Math.round(len / step));
+      for (let i = 0; i < n; i++) {
+        const k = i / n;
+        const d = (5 + jitter(i, salt) * 7 + (i % 2) * 2.5) * unit;
+        pts.push({ x: x0 + (x1 - x0) * k + nx * d, y: y0 + (y1 - y0) * k + ny * d });
+      }
+    };
+    edge(0, 0, width, 0, 0, 1, 1);
+    edge(width, 0, width, height, -1, 0, 2);
+    edge(width, height, 0, height, 0, -1, 3);
+    edge(0, height, 0, 0, 1, 0, 4);
+    const path = new Path2D();
+    pts.forEach((p, i) => (i === 0 ? path.moveTo(p.x, p.y) : path.lineTo(p.x, p.y)));
+    path.closePath();
+    return path;
+  }
+
+  let frameCache = null;
   function drawFrame(ctx, width, height, unit) {
     ctx.save();
-    const inset = 5 * unit;
-    ctx.strokeStyle = "rgba(255, 248, 230, 0.85)";
+    if (!frameCache || frameCache.w !== width || frameCache.h !== height) {
+      frameCache = { w: width, h: height, path: tornEdge(width, height, unit) };
+    }
+    const torn = frameCache.path;
+    ctx.save();
+    ctx.clip(torn);
+    ctx.strokeStyle = "rgba(27, 16, 51, 0.22)";
+    ctx.lineWidth = 9 * unit;
+    ctx.stroke(torn);
+    ctx.restore();
+    const paper = new Path2D();
+    paper.rect(0, 0, width, height);
+    paper.addPath(torn);
+    ctx.fillStyle = "#fff0d2";
+    ctx.fill(paper, "evenodd");
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = INK;
     ctx.lineWidth = 2.2 * unit;
-    ctx.setLineDash([10 * unit, 7 * unit]);
-    ctx.strokeRect(inset, inset, width - inset * 2, height - inset * 2);
+    ctx.stroke(torn);
+    ctx.strokeStyle = "rgba(200, 120, 160, 0.55)";
+    ctx.lineWidth = 1.4 * unit;
+    ctx.setLineDash([4 * unit, 5 * unit]);
+    ctx.strokeRect(2.5 * unit, 2.5 * unit, width - 5 * unit, height - 5 * unit);
     ctx.setLineDash([]);
     ctx.font = `600 ${10 * unit}px Fredoka, sans-serif`;
     ctx.textAlign = "right";
@@ -200,9 +249,9 @@
     ctx.lineWidth = 3 * unit;
     ctx.strokeStyle = "rgba(27, 16, 51, 0.7)";
     const label = `${view.zoom.toFixed(1)}x`;
-    ctx.strokeText(label, width - 12 * unit, height - 10 * unit);
+    ctx.strokeText(label, width - 18 * unit, height - 16 * unit);
     ctx.fillStyle = "#fff";
-    ctx.fillText(label, width - 12 * unit, height - 10 * unit);
+    ctx.fillText(label, width - 18 * unit, height - 16 * unit);
     ctx.restore();
   }
 

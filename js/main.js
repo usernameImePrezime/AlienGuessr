@@ -203,7 +203,7 @@
     const detail = species.detail === "none" ? "bald" : titleCase(species.detail).toLowerCase();
     const groups = [
       ["Locals", [
-        ["Species", `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`, "alien"],
+        ["Species", G.describeSpecies ? G.describeSpecies(species) : `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`, "alien"],
         ["Colors", `${alienNames[profile.alienMix]}, ${profile.alienHeight}`, null],
       ]],
       ["Sky", [
@@ -311,6 +311,17 @@
     sound(points >= 3500 ? "great" : points < 1200 ? "meh" : "lock");
     updateHud();
     G.mapView.fit([match.pin, G.currentRound(match)]);
+    spinCompass();
+  }
+
+  function spinCompass() {
+    const compass = $("compass");
+    if (!compass) return;
+    compass.classList.remove("is-spinning");
+    void compass.getBoundingClientRect();
+    compass.classList.add("is-spinning");
+    clearTimeout(spinCompass.timer);
+    spinCompass.timer = setTimeout(() => compass.classList.remove("is-spinning"), 1400);
   }
 
   function next() {
