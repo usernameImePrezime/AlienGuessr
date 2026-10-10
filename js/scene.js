@@ -10,18 +10,45 @@
     return G.mulberry32(G.hashSeed(key));
   }
 
-  function shownFeatures(profile, rng) {
-    const keys = ["skyEvent", "stars", "building", "vegetation", "aliens", "fence", "banner", "sign", "pole", "groundPattern", "weather", "landmark"];
-    const shown = {};
+  function shownFeatures(profile, rng, kind) {
+    const M = G.METAS;
+    const tier = M.tierOf(profile.difficulty);
+    const rural = kind !== "city";
+    const available = {
+      skyEvent: true,
+      stars: true,
+      building: true,
+      vegetation: true,
+      aliens: true,
+      fence: profile.fence !== "none" && rural,
+      banner: profile.banner !== "none",
+      sign: true,
+      pole: true,
+      groundPattern: profile.groundPattern !== "plain" && rural,
+      weather: profile.weather !== "clear",
+      landmark: true,
+      bollard: !!profile.bollard && rural,
+      chevron: !!profile.chevron && rural,
+      guardrail: !!profile.guardrail && rural,
+      kmMarker: !!profile.kmMarker && rural,
+      billboard: !!(profile.domain || profile.areaCode),
+      plate: !!profile.plate,
+    };
+    const keys = Object.keys(available).filter((key) => available[key]);
+    for (let i = keys.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [keys[i], keys[j]] = [keys[j], keys[i]];
+    }
+    const cap = [5, 6, 7][tier];
+    const shown = { probeCar: !!profile.probeCar && rng() < M.FEATURE_CHANCE.probeCar };
+    let count = 0;
     keys.forEach((key) => {
-      shown[key] = rng() < 0.34;
+      shown[key] = count < cap && rng() < M.FEATURE_CHANCE[key];
+      if (shown[key]) count += 1;
     });
-    if (profile.fence === "none") shown.fence = false;
-    if (profile.banner === "none") shown.banner = false;
-    if (profile.weather === "clear") shown.weather = false;
-    let count = keys.filter((key) => shown[key]).length;
-    ["sign", "aliens", "building", "vegetation", "skyEvent"].forEach((key) => {
-      if (count >= 2 || shown[key]) return;
+    const fallback = tier > 0 ? ["sign", "bollard", "billboard", "aliens", "building"] : ["sign", "aliens", "building", "vegetation", "skyEvent"];
+    fallback.forEach((key) => {
+      if (count >= 2 || shown[key] || !available[key]) return;
       shown[key] = true;
       count += 1;
     });
@@ -87,6 +114,11 @@
     if (biome === "highland") ground = shade(ground, -3, -10);
     if (biome === "rock") ground = mixC(ground, { h: 265, s: 14, l: 60 }, 0.55);
     if (biome === "snow") ground = mixC(ground, { h: 215, s: 35, l: 93 }, 0.82);
+    const soil = profile.soil ? G.METAS.SOIL_TINT[profile.soil] : null;
+    if (soil && biome !== "snow") ground = mixC(ground, soil, 0.42);
+    if (profile.dryness === "lush") ground = shade(ground, -4, 10);
+    if (profile.dryness === "scrub") ground = mixC(ground, { h: 42, s: 40, l: 62 }, 0.22);
+    if (profile.dryness === "dusty") ground = mixC(ground, { h: ground.h, s: 18, l: 74 }, 0.45);
     const plantA = { h: ground.h + 16, s: clamp(ground.s + 26, 44, 84), l: clamp(ground.l - 12, 30, 60) };
     const plantB = { h: ground.h - 24, s: clamp(ground.s + 20, 44, 84), l: clamp(ground.l - 2, 36, 66) };
     const plantC = { h: ground.h + 48, s: 72, l: 52 };
@@ -106,9 +138,10 @@
       mountain,
       trunk: { h: (ground.h + 190) % 360, s: 34, l: 46 },
       rock: mixC({ h: 270, s: 14, l: 62 }, ground, 0.3),
-      dirt: biome === "snow" ? { h: 220, s: 18, l: 82 } : mixC(profile.pathColor, ground, 0.12),
+      dirt: biome === "snow" ? { h: 220, s: 18, l: 82 } : mixC(soil ? mixC(profile.pathColor, soil, 0.55) : profile.pathColor, ground, 0.12),
       pop: { h: accent.h + 180, s: 82, l: 66 },
       pop2: { h: ground.h + 150, s: 85, l: 68 },
+      density: { lush: 1.25, scrub: 0.7, dusty: 0.4 }[profile.dryness] || 1,
     };
   }
 
@@ -157,33 +190,33 @@
     glow.addColorStop(1, col(pal.glow, 10, 0, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, y0 + 4);
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       const x = rng() * W;
       const y = rng() * y0;
-      const r = (80 + rng() * 200) * U;
+      const r = (100 + rng() * 200) * U;
       const tint = [pal.sky0, pal.sky1, profile.accentColor, pal.glow][i % 4];
       const bloom = ctx.createRadialGradient(x, y, 0, x, y, r);
-      bloom.addColorStop(0, col(tint, 8, 0, 0.3));
-      bloom.addColorStop(0.7, col(tint, 8, 0, 0.12));
+      bloom.addColorStop(0, col(tint, 8, 0, 0.22));
+      bloom.addColorStop(0.7, col(tint, 8, 0, 0.08));
       bloom.addColorStop(1, col(tint, 8, 0, 0));
       ctx.fillStyle = bloom;
       ctx.beginPath();
       ctx.ellipse(x, y, r, r * (0.4 + rng() * 0.4), (rng() - 0.5) * 0.6, 0, TAU);
       ctx.fill();
     }
-    for (let i = 0; i < 4; i++) {
-      const tint = [profile.accentColor, pal.sky0, pal.glow, pal.pop][i];
-      const y = y0 * (0.15 + i * 0.2 + rng() * 0.1);
+    for (let i = 0; i < 2; i++) {
+      const tint = [profile.accentColor, pal.glow][i];
+      const y = y0 * (0.2 + i * 0.4 + rng() * 0.1);
       const span = (50 + rng() * 60) * U;
       const band = ctx.createLinearGradient(0, y - span * 0.5, 0, y + span * 0.5);
       band.addColorStop(0, col(tint, 10, 8, 0));
-      band.addColorStop(0.5, col(tint, 10, 8, 0.24));
+      band.addColorStop(0.5, col(tint, 10, 8, 0.16));
       band.addColorStop(1, col(tint, 10, 8, 0));
       G.wc.wash(ctx, () => ctx.rect(0, y - span * 0.5, W, span), band, { soft: true, mottle: 0.2 });
     }
-    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.3, 2.4);
+    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.22, 2.4);
     ctx.lineCap = "round";
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 3; i++) {
       const y = y0 * (0.1 + rng() * 0.75);
       const x = rng() * W * 0.7;
       ctx.strokeStyle = col(mixC(pal.sky1, { h: 0, s: 0, l: 100 }, 0.5), 0, 0, 0.22);
@@ -748,7 +781,7 @@
       const tint = [pal.pop, pal.pop2, pal.plantC][i % 3];
       G.wc.bloom(ctx, x, y, r, col(tint, 0, 0), 0.16);
     }
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < 60; i++) {
       const t = Math.pow(rng(), 1.4);
       const y = cam.y0 + 4 * U + t * (cam.H - cam.y0);
       const x = rng() * cam.W;
@@ -1028,7 +1061,7 @@
           ctx.fill();
         }
       });
-      if (rng() < 0.75) {
+      if (rng() < 0.75 && kind !== "paved") {
         const tx = (rng() - 0.5) * halfW * 0.8;
         const dir = rng() < 0.5 ? 1 : -1;
         for (let z = 3 + rng() * 2, k = 0; z < 20; z += 1.25, k++) {
@@ -1121,12 +1154,98 @@
     }
   }
 
+  function centerLine(ctx, cam, road, zs, profile, drng, zMax) {
+    const pattern = profile.linePattern;
+    if (pattern === "none") return;
+    if (!pattern || pattern === "dashed") {
+      const dash = pattern ? G.metaColors.LINE.dashed : col(profile.pathLineColor, 10);
+      for (let z = 3; z < zMax * 0.6; z += 6) {
+        if (z < 30) dryBrush(ctx, cam, road, z, z + 3, -0.08, 0.08, dash, drng, 1);
+        else {
+          ctx.fillStyle = dash;
+          ctx.beginPath();
+          strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
+          ctx.fill();
+        }
+      }
+      return;
+    }
+    const near = zs.filter((z) => z < zMax * 0.7);
+    const offsets = pattern === "double" ? [-0.15, 0.15] : [0];
+    ctx.save();
+    ctx.fillStyle = G.metaColors.LINE[pattern];
+    ctx.globalAlpha = 0.92;
+    offsets.forEach((o) => {
+      ctx.beginPath();
+      strip(ctx, cam, road, near, o - 0.07, o + 0.07);
+      ctx.fill();
+    });
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = G.wc.patternFor(ctx, "mottle");
+    offsets.forEach((o) => {
+      ctx.beginPath();
+      strip(ctx, cam, road, near, o - 0.07, o + 0.07);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function edgeBlades(ctx, cam, road, zs, halfW, wobL, wobR, pal, U) {
+    const blade = col(pal.plantA, -4);
+    [-1, 1].forEach((side) => {
+      const wob = side < 0 ? wobL : wobR;
+      ctx.fillStyle = blade;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = Math.max(0.6, 0.8 * U);
+      ctx.beginPath();
+      for (let i = 0; i < zs.length && zs[i] < 34; i++) {
+        if (i % 2) continue;
+        const z = zs[i];
+        const p = cam.p(road.x(z) + side * halfW + wob[i], z, 0);
+        const h = p.s * (0.16 + ((i * 7) % 5) * 0.03);
+        const w = p.s * 0.08;
+        ctx.moveTo(p.x - w, p.y + h * 0.1);
+        ctx.lineTo(p.x - side * w * 0.6, p.y - h);
+        ctx.lineTo(p.x + w * 0.2, p.y + h * 0.05);
+        ctx.lineTo(p.x - side * w * 1.6, p.y - h * 0.7);
+        ctx.lineTo(p.x + w, p.y + h * 0.1);
+        ctx.closePath();
+      }
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  function drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build, wobL, wobR) {
+    const asphalt = { h: 255, s: 12, l: 50 };
+    ctx.fillStyle = col(pal.dirt, -6, 0, 0.7);
+    ctx.beginPath();
+    strip(ctx, cam, road, zs, -halfW - 0.55, -halfW + 0.05);
+    strip(ctx, cam, road, zs, halfW - 0.05, halfW + 0.55);
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, farY, 0, cam.H);
+    g.addColorStop(0, col(mixC(asphalt, pal.sky1, 0.4)));
+    g.addColorStop(1, col(asphalt, -6));
+    paint(ctx, build, g, { glaze: col(asphalt, -14), edge: 10 * U });
+    ctx.fillStyle = "rgba(255, 250, 242, 0.85)";
+    ctx.beginPath();
+    strip(ctx, cam, road, zs.filter((z) => z < zMax * 0.7), -halfW + 0.22, -halfW + 0.34);
+    strip(ctx, cam, road, zs.filter((z) => z < zMax * 0.7), halfW - 0.34, halfW - 0.22);
+    ctx.fill();
+    centerLine(ctx, cam, road, zs, profile, drng, zMax);
+    stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW), INK, 1.6 * U);
+    stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW), INK, 1.6 * U);
+    edgeBlades(ctx, cam, road, zs, halfW + 0.5, wobL, wobR, pal, U);
+  }
+
   function drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax) {
     const zs = roadSamples(cam, zMax);
     const drng = G.mulberry32(Math.floor(rng() * 4294967296));
     const wobL = zs.map(() => (rng() - 0.5) * 0.25);
     const wobR = zs.map(() => (rng() - 0.5) * 0.25);
     const city = kind === "city";
+    const paved = !city && roadCls === "major" && !!profile.linePattern;
     const build = () => {
       zs.forEach((z, i) => {
         const p = cam.p(road.x(z) - halfW + (city ? 0 : wobL[i]), z, 0);
@@ -1203,27 +1322,29 @@
         paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, pal.sky0, 0.4), 6), { ink: inkW(p.s, U) * 0.6 });
         paint(ctx, () => ctx.ellipse(p.x - rx * 0.3, p.y - ry * 0.2, rx * 0.3, ry * 0.2, 0, 0, TAU), "rgba(255,255,255,0.65)");
       }
+      const curbPaint = profile.curb && G.metaColors.CURB[profile.curb];
       [-1, 1].forEach((side) => {
         const curb = { h: 240, s: 10, l: 86 };
         paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 0.22), 0.15), col(curb), { ink: 1.1 * U });
+        if (curbPaint) {
+          for (let z = zs[0], k = 0; z < 70; z += 1.2, k++) {
+            ctx.fillStyle = curbPaint[k % 2];
+            ctx.beginPath();
+            strip(ctx, cam, road, [z, z + 0.6, z + 1.2], side * halfW, side * (halfW + 0.22), 0.15);
+            ctx.fill();
+          }
+        }
         stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.8 * U);
       });
-      const dash = col(profile.pathLineColor, 10);
-      for (let z = 3; z < zMax * 0.6; z += 6) {
-        if (z < 30) dryBrush(ctx, cam, road, z, z + 3, -0.08, 0.08, dash, drng, 1);
-        else {
-          ctx.fillStyle = dash;
-          ctx.beginPath();
-          strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
-          ctx.fill();
-        }
-      }
+      centerLine(ctx, cam, road, zs, profile, drng, zMax);
       if (rng() < 0.5) {
         const z0 = 7 + rng() * 6;
         for (let k = -halfW + 0.4; k < halfW - 0.4; k += 0.9) {
           dryBrush(ctx, cam, road, z0, z0 + 2.4, k, k + 0.45, "rgb(255, 250, 245)", drng, 0.9);
         }
       }
+    } else if (paved) {
+      drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build, wobL, wobR);
     } else {
       const dirt = pal.dirt;
       const g = ctx.createLinearGradient(0, farY, 0, cam.H);
@@ -1279,31 +1400,9 @@
       }
       stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW, wobL), INK, 1.6 * U);
       stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW, wobR), INK, 1.6 * U);
-      const blade = col(pal.plantA, -4);
-      [-1, 1].forEach((side) => {
-        const wob = side < 0 ? wobL : wobR;
-        ctx.fillStyle = blade;
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = Math.max(0.6, 0.8 * U);
-        ctx.beginPath();
-        for (let i = 0; i < zs.length && zs[i] < 34; i++) {
-          if (i % 2) continue;
-          const z = zs[i];
-          const p = cam.p(road.x(z) + side * halfW + wob[i], z, 0);
-          const h = p.s * (0.16 + ((i * 7) % 5) * 0.03);
-          const w = p.s * 0.08;
-          ctx.moveTo(p.x - w, p.y + h * 0.1);
-          ctx.lineTo(p.x - side * w * 0.6, p.y - h);
-          ctx.lineTo(p.x + w * 0.2, p.y + h * 0.05);
-          ctx.lineTo(p.x - side * w * 1.6, p.y - h * 0.7);
-          ctx.lineTo(p.x + w, p.y + h * 0.1);
-          ctx.closePath();
-        }
-        ctx.fill();
-        ctx.stroke();
-      });
+      edgeBlades(ctx, cam, road, zs, halfW, wobL, wobR, pal, U);
     }
-    drawRoadDetail(ctx, cam, road, halfW, kind, roadCls, profile, pal, drng, U, zMax, zs, city ? { h: 255, s: 14, l: 44 } : pal.dirt);
+    drawRoadDetail(ctx, cam, road, halfW, paved ? "paved" : kind, roadCls, profile, pal, drng, U, zMax, zs, city || paved ? { h: 255, s: 14, l: 46 } : pal.dirt);
     drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax);
     if (!city) {
       for (let i = 0; i < 46; i++) {
@@ -1377,11 +1476,52 @@
   }
 
   function pickColor(profile, rng) {
-    if (profile.alienMix === "mixed") return rng() < 0.5 ? "pink" : "blue";
-    return profile.alienMix;
+    const colors = profile.alienColors || ["pink"];
+    return colors.length > 1 ? colors[rng() < 0.5 ? 0 : 1] : colors[0];
   }
 
-  function addAlien(queue, cam, road, halfW, profile, rng, U, z, x) {
+  function makeLayout() {
+    const boxes = [];
+    const hits = (b) => boxes.some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0);
+    return {
+      take(x, z, rx, rz) {
+        const b = { x0: x - rx, x1: x + rx, z0: z - rz, z1: z + rz };
+        if (hits(b)) return false;
+        boxes.push(b);
+        return true;
+      },
+      block(x0, x1, z0, z1) {
+        boxes.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), z0: Math.min(z0, z1), z1: Math.max(z0, z1) });
+      },
+      free(x, z, rx, rz) {
+        return !hits({ x0: x - rx, x1: x + rx, z0: z - rz, z1: z + rz });
+      },
+    };
+  }
+
+  function curveInfo(road) {
+    let best = { z: 24, c: 0 };
+    for (let z = 12; z <= 40; z += 2) {
+      const c = road.x(z + 3) - 2 * road.x(z) + road.x(z - 3);
+      if (Math.abs(c) > Math.abs(best.c)) best = { z, c };
+    }
+    return { z: best.z, dir: Math.abs(best.c) > 0.04 ? Math.sign(best.c) : 0 };
+  }
+
+  function addAlien(queue, cam, road, halfW, profile, rng, U, z0, x0, L) {
+    let z = Math.max(5, z0);
+    let x = x0;
+    if (L) {
+      let ok = false;
+      for (let t = 0; t < 6 && !ok; t++) {
+        if (t) {
+          z = Math.max(5, z0 + (rng() - 0.5) * 4);
+          x = x0 + (rng() - 0.5) * 2.6;
+        }
+        ok = L.take(x, z, 0.42, 0.45);
+      }
+      if (!ok) return false;
+    }
     queue.push({
       z,
       draw: (ctx) => {
@@ -1397,11 +1537,31 @@
         }, U);
       },
     });
+    return true;
   }
 
-  function addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, allowMeta) {
+  function metaPlant(ctx, x, y, s, kind, vc, pal, rng, U) {
+    if (kind === "mushroom") P.mushroom(ctx, x, y, s, 2.4 + rng() * 4.5, vc, rng, U);
+    else if (kind === "palm") P.palm(ctx, x, y, s, 6 + rng() * 5, vc, pal.trunk, rng, U);
+    else if (kind === "tentacle") P.tentacle(ctx, x, y, s, 3 + rng() * 4, vc, rng, U);
+    else if (kind === "eyestalk") P.eyestalk(ctx, x, y, s, 1.6 + rng() * 2, vc, rng, U);
+    else if (kind === "bulb") P.bulb(ctx, x, y, s, 2 + rng() * 2.5, vc, rng, U);
+    else if (kind === "spiralfern") P.spiralFern(ctx, x, y, s, 1.6 + rng() * 1.8, vc, rng, U);
+    else if (kind === "balloon") P.balloonPod(ctx, x, y, s, 3 + rng() * 3.5, vc, rng, U);
+    else P.crystal(ctx, x, y, s, 1.4 + rng() * 2.6, vc, rng, U);
+  }
+
+  function addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, allowMeta, L, edgeOff) {
     const meta = shown.vegetation && allowMeta && rng() < 0.45;
     const r = rng();
+    const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
+    const rocky = biome === "rock" || biome === "snow" || (biome === "highland" && r < 0.5);
+    const big = meta || (!rocky && r < (lush ? 0.3 : 0.15));
+    if (L && z < 70) {
+      const off = edgeOff === undefined ? 99 : edgeOff;
+      if (big && (z < 6.5 || off < 2)) return false;
+      if (!L.take(x, z, big ? 1.5 : 0.55, big ? 1.3 : 0.5)) return false;
+    }
     queue.push({
       z,
       pencil: !meta,
@@ -1410,15 +1570,7 @@
         if (p.x < -p.s * 8 || p.x > cam.W + p.s * 8) return;
         const vc = shade(profile.vegetationColor, (rng() - 0.5) * 10);
         if (meta) {
-          const kind = profile.vegetation;
-          if (kind === "mushroom") P.mushroom(ctx, p.x, p.y, p.s, 2.4 + rng() * 4.5, vc, rng, U);
-          else if (kind === "palm") P.palm(ctx, p.x, p.y, p.s, 6 + rng() * 5, vc, pal.trunk, rng, U);
-          else if (kind === "tentacle") P.tentacle(ctx, p.x, p.y, p.s, 3 + rng() * 4, vc, rng, U);
-          else if (kind === "eyestalk") P.eyestalk(ctx, p.x, p.y, p.s, 1.6 + rng() * 2, vc, rng, U);
-          else if (kind === "bulb") P.bulb(ctx, p.x, p.y, p.s, 2 + rng() * 2.5, vc, rng, U);
-          else if (kind === "spiralfern") P.spiralFern(ctx, p.x, p.y, p.s, 1.6 + rng() * 1.8, vc, rng, U);
-          else if (kind === "balloon") P.balloonPod(ctx, p.x, p.y, p.s, 3 + rng() * 3.5, vc, rng, U);
-          else P.crystal(ctx, p.x, p.y, p.s, 1.4 + rng() * 2.6, vc, rng, U);
+          metaPlant(ctx, p.x, p.y, p.s, profile.vegetation, vc, pal, rng, U);
           return;
         }
         const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
@@ -1449,10 +1601,13 @@
     });
   }
 
-  function addPoles(queue, cam, road, halfW, profile, rng, U, side, offset) {
+  function addPoles(queue, cam, road, halfW, profile, rng, U, side, offset, L) {
     const anchors = [];
     const zs = [];
-    for (let z = 5 + rng() * 6; z < 220; z += 26) zs.push(z);
+    for (let z = 5 + rng() * 6; z < 220; z += 26) {
+      if (!L || z > 70 || L.take(road.x(z) + side * (halfW + offset), z, 0.3, 0.35)) zs.push(z);
+    }
+    if (!zs.length) return;
     zs.forEach((z) => {
       const x = road.x(z) + side * (halfW + offset);
       queue.push({
@@ -1473,18 +1628,120 @@
     });
   }
 
-  function addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind) {
-    if (shown.pole) addPoles(queue, cam, road, halfW, profile, rng, U, rng() < 0.5 ? -1 : 1, kind === "city" ? 0.5 : 1.4);
-    if (shown.sign) {
-      const z = 7 + rng() * 9;
-      const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + (kind === "city" ? 0.6 : 0.9));
-      queue.push({ z, draw: (ctx) => P.sign(ctx, cam, x, z, profile, U) });
+  const AD_WORDS = ["ZORP", "BLIP", "GLORB", "SNAX", "WUBBO", "FIZZ", "MOOP", "YUMZ", "GOOP", "ZAP!"];
+
+  function plateFor(profile, rng) {
+    if (!profile.plate) return null;
+    const digits = String(100 + Math.floor(rng() * 900));
+    return { style: profile.plate, text: profile.plateLetter ? `${profile.plateLetter}·${digits}` : digits };
+  }
+
+  function addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, loc) {
+    const city = kind === "city";
+    const at = (z, x, y, draw) => queue.push({ z, draw: (ctx) => {
+      const p = cam.p(x, z, y || 0);
+      if (p.x < -p.s * 6 || p.x > cam.W + p.s * 6) return;
+      draw(ctx, p);
+    } });
+    const curve = curveInfo(road);
+    const own = profile.drivingSide === "left" ? -1 : 1;
+    let railSide = 0;
+    if (shown.guardrail) {
+      railSide = curve.dir ? -curve.dir : rng() < 0.5 ? -1 : 1;
+      const off = halfW + 0.4;
+      const xAt = (z) => road.x(z) + railSide * off;
+      const z0 = 3 + rng() * 3;
+      const z1 = z0 + 28 + rng() * 22;
+      for (let z = z0; z < z1; z += 5) {
+        const za = z;
+        const zb = Math.min(z + 5, z1);
+        L.block(xAt(za) - 0.3, xAt(za) + 0.3, za, zb);
+        queue.push({ z: (za + zb) / 2, draw: (ctx) => P.guardrail(ctx, cam, xAt, za, zb, profile.guardrail, U) });
+      }
     }
-    if (shown.fence && kind !== "city") {
-      const side = rng() < 0.5 ? -1 : 1;
+    if (shown.chevron) {
+      const dir = curve.dir || (rng() < 0.5 ? -1 : 1);
+      const side = -dir;
+      [-4.5, 0, 4.5].forEach((dz) => {
+        const z = curve.z + dz;
+        const x = road.x(z) + side * (halfW + 1.1);
+        if (L.take(x, z, 0.45, 0.4)) at(z, x, 0, (ctx, p) => P.chevron(ctx, p.x, p.y, p.s, profile.chevron, dir, U));
+      });
+    }
+    if (shown.bollard) {
+      [-1, 1].forEach((side) => {
+        if (side === railSide) return;
+        for (let z = 5 + rng() * 5; z < 75; z += 12 + rng() * 4) {
+          const x = road.x(z) + side * (halfW + 0.45);
+          if (L.take(x, z, 0.22, 0.35)) at(z, x, 0, (ctx, p) => P.bollard(ctx, p.x, p.y, p.s, profile.bollard, U));
+        }
+      });
+    }
+    if (shown.kmMarker) {
+      const number = 1 + (Math.floor((loc.along || 0) / 9) + (loc.road || 0) * 13) % 240;
+      for (let t = 0; t < 4; t++) {
+        const z = 6 + rng() * 10;
+        const side = t < 2 ? own : -own;
+        const x = road.x(z) + side * (halfW + 0.75);
+        if (L.take(x, z, 0.3, 0.35)) {
+          at(z, x, 0, (ctx, p) => P.kmMarker(ctx, p.x, p.y, p.s, profile.kmMarker, number, U));
+          break;
+        }
+      }
+    }
+    if (shown.pole) addPoles(queue, cam, road, halfW, profile, rng, U, rng() < 0.5 ? -1 : 1, city ? 0.5 : 1.25, L);
+    if (shown.sign) {
+      for (let t = 0; t < 4; t++) {
+        const z = 7 + rng() * 9;
+        const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + (city ? 0.6 : 0.9));
+        if (L.take(x, z, 0.5, 0.4)) {
+          queue.push({ z, draw: (ctx) => P.sign(ctx, cam, x, z, profile, U) });
+          break;
+        }
+      }
+    }
+    if (shown.billboard) {
+      const phone = profile.areaCode ? `${profile.areaCode}-${100 + Math.floor(rng() * 900)}` : null;
+      const word = AD_WORDS[Math.floor(rng() * AD_WORDS.length)];
+      const domain = profile.domain ? `${word.replace(/[^A-Z]/g, "").toLowerCase()}${profile.domain}` : null;
+      const spec = {
+        small: city,
+        phone,
+        domain,
+        word,
+        bg: { h: rng() * 360, s: 70, l: 80 },
+        accent: { h: rng() * 360, s: 80, l: 58 },
+      };
+      for (let t = 0; t < 6; t++) {
+        const z = city ? 6 + rng() * 8 : 11 + rng() * 14;
+        const side = rng() < 0.5 ? -1 : 1;
+        const x = road.x(z) + side * (halfW + (city ? 1.4 : 2.8 + rng() * 2));
+        if (L.take(x, z, city ? 0.9 : 1.8, 0.6)) {
+          at(z, x, 0, (ctx, p) => P.billboard(ctx, p.x, p.y, p.s, spec, U));
+          break;
+        }
+      }
+    }
+    if (shown.plate) addCar(queue, cam, road, halfW, profile, rng, U, 9 + rng() * 8, L);
+    if (shown.fence && !city) {
+      const side = railSide ? -railSide : rng() < 0.5 ? -1 : 1;
       for (let z = 3.2; z < 46; z += 7) {
         const z0 = z;
-        queue.push({ z: z0 + 3.5, draw: (ctx) => P.fencePiece(ctx, cam, road.x(z0) + side * (halfW + 0.7), z0, z0 + 7, profile, U) });
+        const x = road.x(z0) + side * (halfW + 0.7);
+        L.block(x - 0.25, x + 0.25, z0, z0 + 7);
+        queue.push({ z: z0 + 3.5, draw: (ctx) => P.fencePiece(ctx, cam, x, z0, z0 + 7, profile, U) });
+      }
+    }
+    if (shown.banner && kind !== "wild") {
+      for (let t = 0; t < 4; t++) {
+        const z = 8 + rng() * 10;
+        const side = rng() < 0.5 ? -1 : 1;
+        const x = road.x(z) + side * (halfW + 1.7);
+        if (L.take(x, z, 0.5, 0.5)) {
+          const flip = side < 0;
+          at(z, x, 0, (ctx, p) => P.flagpole(ctx, p.x, p.y, p.s, profile.flag, profile.provinceFlag, U, flip));
+          break;
+        }
       }
     }
     if (shown.banner) {
@@ -1492,6 +1749,8 @@
       const h = kind === "city" ? 7 : 4.6;
       const xl = road.x(z) - halfW - 0.6;
       const xr = road.x(z) + halfW + 0.6;
+      L.take(xl, z, 0.3, 0.3);
+      L.take(xr, z, 0.3, 0.3);
       queue.push({
         z,
         draw: (ctx) => {
@@ -1513,13 +1772,16 @@
     }
   }
 
-  function addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, kind) {
+  function addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, kind, L) {
     const side = () => (rng() < 0.5 ? -1 : 1);
-    const at = (z, x, y, draw) => queue.push({ z, draw: (ctx) => {
-      const p = cam.p(x, z, y || 0);
-      if (p.x < -p.s * 12 || p.x > cam.W + p.s * 12) return;
-      draw(ctx, p);
-    } });
+    const at = (z, x, y, draw) => {
+      if (!y && z < 70 && !L.take(x, z, 0.6, 0.6)) return;
+      queue.push({ z, draw: (ctx) => {
+        const p = cam.p(x, z, y || 0);
+        if (p.x < -p.s * 12 || p.x > cam.W + p.s * 12) return;
+        draw(ctx, p);
+      } });
+    };
     if (rng() < 0.3) {
       const z = 3.5 + rng() * 6;
       const color = { h: rng() * 360, s: 65, l: 60 };
@@ -1555,14 +1817,42 @@
     }
   }
 
-  function populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown) {
-    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "wild");
-    const density = { jungle: 46, meadow: 26, beach: 18, dry: 10, highland: 16, rock: 10, snow: 8, sea: 14, lake: 14 }[biome] || 20;
+  function populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L) {
+    if (shown.building) {
+      const z = 10 + rng() * 14;
+      const side = rng() < 0.5 ? -1 : 1;
+      addShack(queue, cam, road, halfW, profile, rng, U, z, side, true, L);
+    }
+    if (shown.aliens) {
+      const n = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) {
+        const z = 5 + rng() * 16;
+        const x = road.x(z) + (rng() - 0.5) * (halfW * 2 + 3);
+        addAlien(queue, cam, road, halfW, profile, rng, U, z, x, L);
+      }
+    } else if (rng() < 0.4) {
+      const z = 40 + rng() * 30;
+      addAlien(queue, cam, road, halfW, profile, rng, U, z, road.x(z) + (rng() - 0.5) * halfW * 3, L);
+    }
+    if (rng() < 0.15) addCar(queue, cam, road, halfW, profile, rng, U, 20 + rng() * 40, L);
+    if (rng() < 0.25) {
+      const z = 6 + rng() * 10;
+      const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.6);
+      if (L.take(x, z, 0.9, 0.4)) {
+        queue.push({ z, draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          P.bench(ctx, p.x, p.y, p.s, { h: rng() * 360, s: 50, l: 62 }, U);
+        } });
+      }
+    }
+    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "wild", L);
+    const base = { jungle: 46, meadow: 26, beach: 18, dry: 10, highland: 16, rock: 10, snow: 8, sea: 14, lake: 14 }[biome] || 20;
+    const density = Math.round(base * pal.density);
     for (let i = 0; i < density; i++) {
       const z = 3.2 + Math.pow(rng(), 1.5) * 90;
       const side = rng() < 0.5 ? -1 : 1;
-      const x = road.x(z) + side * (halfW + 0.9 + Math.pow(rng(), 1.4) * 16);
-      addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, true);
+      const off = 1.2 + Math.pow(rng(), 1.4) * 16;
+      addPlant(queue, cam, profile, pal, biome, rng, U, z, road.x(z) + side * (halfW + off), shown, true, L, off);
     }
     for (let i = 0; i < density * 0.8; i++) {
       const z = 70 + rng() * 220;
@@ -1570,38 +1860,17 @@
       const x = road.x(z) + side * (halfW + 2 + rng() * 60);
       addPlant(queue, cam, profile, pal, biome, rng, U, z, x, shown, false);
     }
-    if (shown.building) {
-      const z = 10 + rng() * 14;
-      const side = rng() < 0.5 ? -1 : 1;
-      addShack(queue, cam, road, halfW, profile, rng, U, z, side, true);
-    }
-    if (shown.aliens) {
-      const n = 1 + Math.floor(rng() * 3);
-      for (let i = 0; i < n; i++) {
-        const z = 4.5 + rng() * 16;
-        const x = road.x(z) + (rng() - 0.5) * (halfW * 2 + 3);
-        addAlien(queue, cam, road, halfW, profile, rng, U, z, x);
-      }
-    } else if (rng() < 0.4) {
-      const z = 40 + rng() * 30;
-      addAlien(queue, cam, road, halfW, profile, rng, U, z, road.x(z) + (rng() - 0.5) * halfW * 3);
-    }
-    if (rng() < 0.15) addCar(queue, cam, road, halfW, profile, rng, U, 20 + rng() * 40);
-    if (rng() < 0.25) {
-      const z = 6 + rng() * 10;
-      const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.2);
-      queue.push({ z, draw: (ctx) => {
-        const p = cam.p(x, z, 0);
-        P.bench(ctx, p.x, p.y, p.s, { h: rng() * 360, s: 50, l: 62 }, U);
-      } });
-    }
   }
 
-  function addShack(queue, cam, road, halfW, profile, rng, U, z, side, shownBuilding) {
+  function addShack(queue, cam, road, halfW, profile, rng, U, z, side, shownBuilding, L) {
     const width = 4 + rng() * 2.2;
     const depth = 3.5 + rng() * 1.8;
-    const off = 1.4 + rng() * 2.4;
+    const off = 1.7 + rng() * 2.4;
     const xa = road.x(z) + side * (halfW + off);
+    if (L) {
+      if (!L.free((xa + xa + side * width) / 2, z + depth / 2, width / 2 + 0.3, depth / 2 + 0.3)) return false;
+      L.block(xa - side * 0.9, xa + side * (width + 0.3), z - 3.5, z + depth + 0.3);
+    }
     const spec = {
       xa,
       side,
@@ -1630,53 +1899,60 @@
     }
   }
 
-  function addCar(queue, cam, road, halfW, profile, rng, U, z) {
-    const lane = profile.drivingSide === "left" ? -1 : 1;
+  function addCar(queue, cam, road, halfW, profile, rng, U, z, L) {
+    const own = profile.drivingSide === "left" ? -1 : 1;
+    const lane = rng() < 0.7 ? own : -own;
     const x = road.x(z) + lane * halfW * 0.48;
+    if (L && !L.take(x, z, 1.1, 2.2)) return;
     const color = { h: rng() * 360, s: 70, l: 64 };
+    const plateSpec = plateFor(profile, rng);
     queue.push({ z, draw: (ctx) => {
       const p = cam.p(x, z, 0);
-      P.hoverCar(ctx, p.x, p.y, p.s, color, U, rng);
+      P.hoverCar(ctx, p.x, p.y, p.s, color, U, rng, plateSpec);
     } });
   }
 
-  function populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown) {
-    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "village");
+  function populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L) {
     let z = 6 + rng() * 5;
     const count = 2 + Math.floor(rng() * 4);
     for (let i = 0; i < count; i++) {
-      addShack(queue, cam, road, halfW, profile, rng, U, z, i % 2 ? 1 : -1, shown.building);
+      addShack(queue, cam, road, halfW, profile, rng, U, z, i % 2 ? 1 : -1, shown.building, L);
       z += 5 + rng() * 9;
     }
-    for (let i = 0; i < 26; i++) {
+    if (rng() < 0.45) {
+      const sz = 5 + rng() * 6;
+      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.9);
+      const color = { h: rng() * 360, s: 75, l: 62 };
+      if (L.take(sx, sz, 1.4, 0.6)) {
+        queue.push({ z: sz, draw: (ctx) => {
+          const p = cam.p(sx, sz, 0);
+          P.stall(ctx, p.x, p.y, p.s, color, U, rng);
+        } });
+      }
+    }
+    const near = shown.aliens;
+    const n = near ? 2 + Math.floor(rng() * 4) : 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const az = near ? 5 + rng() * 18 : 26 + rng() * 34;
+      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + (rng() - 0.5) * (halfW * 2 + 4), L);
+    }
+    if (rng() < 0.3) addCar(queue, cam, road, halfW, profile, rng, U, 14 + rng() * 30, L);
+    addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "village", L);
+    for (let i = 0; i < Math.round(26 * pal.density); i++) {
       const pz = 3.2 + Math.pow(rng(), 1.3) * 80;
       const side = rng() < 0.5 ? -1 : 1;
-      addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + side * (halfW + 1 + rng() * 14), shown, true);
+      const off = 1.2 + rng() * 14;
+      addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + side * (halfW + off), shown, true, L, off);
     }
     for (let i = 0; i < 18; i++) {
       const pz = 60 + rng() * 200;
       addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + (rng() < 0.5 ? -1 : 1) * (halfW + 3 + rng() * 50), shown, false);
     }
-    if (rng() < 0.45) {
-      const sz = 5 + rng() * 6;
-      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.6);
-      const color = { h: rng() * 360, s: 75, l: 62 };
-      queue.push({ z: sz, draw: (ctx) => {
-        const p = cam.p(sx, sz, 0);
-        P.stall(ctx, p.x, p.y, p.s, color, U, rng);
-      } });
-    }
-    const near = shown.aliens;
-    const n = near ? 2 + Math.floor(rng() * 4) : 1 + Math.floor(rng() * 3);
-    for (let i = 0; i < n; i++) {
-      const az = near ? 4 + rng() * 18 : 26 + rng() * 34;
-      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + (rng() - 0.5) * (halfW * 2 + 4));
-    }
-    if (rng() < 0.3) addCar(queue, cam, road, halfW, profile, rng, U, 14 + rng() * 30);
   }
 
-  function populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown) {
+  function populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown, L) {
     [-1, 1].forEach((side) => {
+      L.block(road.x(3) + side * (halfW + 3.2), road.x(3) + side * (halfW + 40), 0, 250);
       let z = 3 + rng() * 3;
       while (z < 240) {
         const depth = 8 + rng() * 8;
@@ -1718,10 +1994,48 @@
         z += depth + (rng() < 0.25 ? 1.5 + rng() * 2 : 0);
       }
     });
-    for (let i = 0; i < 3; i++) {
-      const tz = 5 + rng() * 30;
+    if (rng() < 0.6) {
+      const cz = 6 + rng() * 8;
       const side = rng() < 0.5 ? -1 : 1;
-      const tx = road.x(tz) + side * (halfW + 0.9);
+      const cx = road.x(cz) + side * (halfW + 1.9);
+      const color = { h: rng() * 360, s: 75, l: 64 };
+      if (L.take(cx, cz, 1.1, 0.8)) {
+        queue.push({ z: cz, draw: (ctx) => {
+          const p = cam.p(cx, cz, 0);
+          P.cafe(ctx, p.x, p.y, p.s, color, U);
+        } });
+        if (shown.aliens) {
+          addAlien(queue, cam, road, halfW, profile, rng, U, cz - 1, cx - 1.1 * side, L);
+          addAlien(queue, cam, road, halfW, profile, rng, U, cz + 1.2, cx, L);
+        }
+      }
+    }
+    if (rng() < 0.35) {
+      const sz = 8 + rng() * 10;
+      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.9);
+      const color = { h: rng() * 360, s: 75, l: 62 };
+      if (L.take(sx, sz, 1.3, 0.6)) {
+        queue.push({ z: sz, draw: (ctx) => {
+          const p = cam.p(sx, sz, 0);
+          P.stall(ctx, p.x, p.y, p.s, color, U, rng);
+        } });
+      }
+    }
+    const near = shown.aliens;
+    const n = near ? 4 + Math.floor(rng() * 5) : 2 + Math.floor(rng() * 4);
+    for (let i = 0; i < n; i++) {
+      const az = near ? 5 + rng() * 22 : 30 + rng() * 40;
+      const side = rng() < 0.5 ? -1 : 1;
+      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + side * (halfW + 0.7 + rng() * 2.2), L);
+    }
+    const cars = 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < cars; i++) addCar(queue, cam, road, halfW, profile, rng, U, 12 + rng() * 60, L);
+    for (let i = 0, planted = 0; i < 6 && planted < 3; i++) {
+      const tz = 7 + rng() * 30;
+      const side = rng() < 0.5 ? -1 : 1;
+      const tx = road.x(tz) + side * (halfW + 1.1);
+      if (!L.take(tx, tz, 0.9, 1)) continue;
+      planted += 1;
       if (shown.vegetation) addPlant(queue, cam, profile, pal, "meadow", rng, U, tz, tx, { vegetation: true }, true);
       else {
         const plant = pal.plantA;
@@ -1731,38 +2045,6 @@
         } });
       }
     }
-    if (rng() < 0.6) {
-      const cz = 5 + rng() * 8;
-      const side = rng() < 0.5 ? -1 : 1;
-      const cx = road.x(cz) + side * (halfW + 1.8);
-      const color = { h: rng() * 360, s: 75, l: 64 };
-      queue.push({ z: cz, draw: (ctx) => {
-        const p = cam.p(cx, cz, 0);
-        P.cafe(ctx, p.x, p.y, p.s, color, U);
-      } });
-      if (shown.aliens) {
-        addAlien(queue, cam, road, halfW, profile, rng, U, cz - 0.4, cx - 0.9);
-        addAlien(queue, cam, road, halfW, profile, rng, U, cz - 0.4, cx + 0.9);
-      }
-    }
-    if (rng() < 0.35) {
-      const sz = 8 + rng() * 10;
-      const sx = road.x(sz) + (rng() < 0.5 ? -1 : 1) * (halfW + 1.7);
-      const color = { h: rng() * 360, s: 75, l: 62 };
-      queue.push({ z: sz, draw: (ctx) => {
-        const p = cam.p(sx, sz, 0);
-        P.stall(ctx, p.x, p.y, p.s, color, U, rng);
-      } });
-    }
-    const near = shown.aliens;
-    const n = near ? 4 + Math.floor(rng() * 5) : 2 + Math.floor(rng() * 4);
-    for (let i = 0; i < n; i++) {
-      const az = near ? 4 + rng() * 22 : 30 + rng() * 40;
-      const side = rng() < 0.5 ? -1 : 1;
-      addAlien(queue, cam, road, halfW, profile, rng, U, az, road.x(az) + side * (halfW + 0.5 + rng() * 2.4));
-    }
-    const cars = 1 + Math.floor(rng() * 3);
-    for (let i = 0; i < cars; i++) addCar(queue, cam, road, halfW, profile, rng, U, 12 + rng() * 60);
   }
 
   function drawSkyline(ctx, cam, road, pal, rng, U) {
@@ -1839,9 +2121,9 @@
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
     const grade = ctx.createLinearGradient(0, 0, 0, H);
-    grade.addColorStop(0, "rgba(255, 150, 210, 0.3)");
-    grade.addColorStop(0.55, "rgba(255, 236, 200, 0.18)");
-    grade.addColorStop(1, "rgba(90, 120, 255, 0.26)");
+    grade.addColorStop(0, "rgba(255, 170, 215, 0.16)");
+    grade.addColorStop(0.55, "rgba(255, 240, 210, 0.12)");
+    grade.addColorStop(1, "rgba(90, 120, 255, 0.14)");
     ctx.fillStyle = grade;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
@@ -1861,7 +2143,7 @@
     if (biome === "sea" || biome === "lake") biome = "beach";
     const place = G.settlementAt(planet, loc.x, loc.y);
     const kind = place.kind;
-    const shown = shownFeatures(profile, rng);
+    const shown = shownFeatures(profile, rng, kind);
     const pal = palette(profile, biome);
     const roadInfo = planet.roads[loc.road];
     const roadCls = roadInfo ? roadInfo.cls : "minor";
@@ -1881,13 +2163,67 @@
     }
   }
 
+  let depthLayer = null;
+
+  function drawQueue(ctx, cam, items, haze) {
+    const bands = [[90, Infinity, 0.42], [35, 90, 0.24]];
+    bands.forEach(([z0, z1, alpha]) => {
+      const group = items.filter((item) => item.z >= z0 && item.z < z1);
+      if (!group.length) return;
+      depthLayer = depthLayer || document.createElement("canvas");
+      if (depthLayer.width !== cam.W || depthLayer.height !== cam.H) {
+        depthLayer.width = cam.W;
+        depthLayer.height = cam.H;
+      }
+      const dc = depthLayer.getContext("2d");
+      dc.setTransform(1, 0, 0, 1, 0, 0);
+      dc.globalCompositeOperation = "source-over";
+      dc.globalAlpha = 1;
+      dc.clearRect(0, 0, cam.W, cam.H);
+      dc.lineJoin = "round";
+      dc.lineCap = "round";
+      group.forEach((item) => {
+        G.wc.setLine(item.pencil ? "pencil" : "pen");
+        item.draw(dc);
+      });
+      dc.globalCompositeOperation = "source-atop";
+      dc.fillStyle = col(haze, 8, -12, alpha);
+      dc.fillRect(0, 0, cam.W, cam.H);
+      ctx.drawImage(depthLayer, 0, 0);
+    });
+    items.filter((item) => item.z < 35).forEach((item) => {
+      G.wc.setLine(item.pencil ? "pencil" : "pen");
+      item.draw(ctx);
+    });
+  }
+
+  function sunAngle(planet, profile, loc) {
+    const bearing = ((((loc.heading * 180) / Math.PI + 90) % 360) + 360) % 360;
+    const wobble = stableRand(`${planet.seed}|sun`)() * 50 - 25;
+    const az = (profile.hemisphere === "south" ? 0 : 180) + wobble;
+    return ((((az - bearing) % 360) + 540) % 360) - 180;
+  }
+
+  function drawSunSide(ctx, cam, rel, rng, U) {
+    const halfFov = 40;
+    if (Math.abs(rel) < halfFov + 4) {
+      const x = cam.cx + Math.tan((rel * Math.PI) / 180) * cam.f;
+      P.sun(ctx, x, cam.y0 * (0.24 + rng() * 0.12), 24 * U, U);
+    } else if (Math.abs(rel) < 118) {
+      P.sunGlow(ctx, cam.W, cam.H, Math.sign(rel), 1 - (Math.abs(rel) - halfFov) / 80);
+    }
+  }
+
   function paintScene(ctx, o) {
-    const { planet, profile, rng, U, kind, shown, pal, roadCls, halfW, cam, road, hz, zMax, biome } = o;
+    const { planet, loc, profile, rng, U, kind, shown, pal, roadCls, halfW, cam, road, hz, zMax, biome } = o;
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     G.wc.setLine("pencil");
+    const rel = sunAngle(planet, profile, loc);
+    G.light = { dx: -Math.sin((rel * Math.PI) / 180), dy: Math.cos((rel * Math.PI) / 180) };
     drawSky(ctx, cam, pal, profile, rng, U);
+    drawSunSide(ctx, cam, rel, rng, U);
     if (shown.stars) drawStars(ctx, cam, profile, rng, U);
     drawMoons(ctx, cam, planet, rng, U);
     if (shown.skyEvent) drawSkyEvent(ctx, cam, profile, rng, U);
@@ -1908,22 +2244,26 @@
     drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax);
 
     const queue = [];
-    if (kind === "city") populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown);
-    else if (kind === "village") populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
-    else populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown);
-    addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind);
-    queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z).forEach((item) => {
-      G.wc.setLine(item.pencil ? "pencil" : "pen");
-      item.draw(ctx);
-    });
+    const L = makeLayout();
+    addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, o.loc);
+    if (kind === "city") populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown, L);
+    else if (kind === "village") populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L);
+    else populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L);
+    drawQueue(ctx, cam, queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z), haze);
     G.wc.setLine("pencil");
 
     if (kind !== "city") drawForeground(ctx, cam, pal, biome, rng, U);
+    if (shown.probeCar) {
+      G.wc.setLine("pen");
+      P.probeCar(ctx, cam.W, cam.H, profile.probeCar, pal.sky1, U);
+      G.wc.setLine("pencil");
+    }
     if (shown.weather) drawWeather(ctx, cam, profile, pal, rng, U);
     finish(ctx, cam, U, pal, profile, rng);
     ctx.restore();
   }
 
   G.drawScene = drawScene;
+  G.sceneKit = { camera, palette, drawSky, drawStars, drawSkyEvent, drawLandmarks, wallPalette, plateFor, metaPlant };
   G.paperTexture = paperTexture;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

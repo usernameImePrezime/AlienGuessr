@@ -18,6 +18,16 @@
       { base: "#80b6ff", shade: "#568ae6", light: "#d4e5ff", belly: "#e3eeff" },
       { base: "#4f86f2", shade: "#335fc8", light: "#adc9ff", belly: "#cadcff" },
     ],
+    yellow: [
+      { base: "#ffd84a", shade: "#e0a92a", light: "#fff1a8", belly: "#fff6c8" },
+      { base: "#ffe36e", shade: "#e6b844", light: "#fff5bd", belly: "#fffad8" },
+      { base: "#f7c933", shade: "#cc9418", light: "#ffe58c", belly: "#fff0b8" },
+    ],
+    green: [
+      { base: "#6fdc6a", shade: "#45b04a", light: "#c4f5b8", belly: "#dcf9d2" },
+      { base: "#8ce884", shade: "#5fbe60", light: "#d2f8c8", belly: "#e6fbe0" },
+      { base: "#52c75a", shade: "#349a3e", light: "#a8eda0", belly: "#c8f4c0" },
+    ],
   };
 
   const BODY = {
@@ -814,11 +824,10 @@
 
   function drawSpeciesCard(ctx, profile, w, h) {
     ctx.clearRect(0, 0, w, h);
-    const mixed = profile.alienMix === "mixed";
-    const color = profile.alienMix === "blue" ? "blue" : "pink";
-    const picks = mixed
-      ? [alienSprite(profile.alienSpecies, "pink", 0, 1), alienSprite(profile.alienSpecies, "blue", 0, 0)]
-      : [alienSprite(profile.alienSpecies, color, 0, 1), alienSprite(profile.alienSpecies, color, 2, 0)];
+    const colors = profile.alienColors || ["pink"];
+    const picks = colors.length > 1
+      ? [alienSprite(profile.alienSpecies, colors[0], 0, 1), alienSprite(profile.alienSpecies, colors[1], 0, 0)]
+      : [alienSprite(profile.alienSpecies, colors[0], 0, 1), alienSprite(profile.alienSpecies, colors[0], 2, 0)];
     const groundY = h * 0.9;
     const pxPerM = (h * 0.8) / 2.05;
     const hM = HEIGHT_M[profile.alienHeight] || 1.45;
@@ -900,4 +909,4 @@
   G.alienSprite = alienSprite;
   G.drawSpeciesCard = drawSpeciesCard;
   G.describeSpecies = describeSpecies;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

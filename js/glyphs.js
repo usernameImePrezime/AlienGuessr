@@ -134,4 +134,4 @@
 
   G.drawGlyph = drawGlyph;
   G.GLYPH_COUNT = drawers.length;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

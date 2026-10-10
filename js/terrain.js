@@ -59,7 +59,26 @@
     return t * t * (3 - 2 * t);
   }
 
-  function rawHeights(seed) {
+  function continentCenters(seed, count) {
+    if (count <= 1) return [];
+    const rand = G.mulberry32(G.hashSeed(`${seed}|continents|${count}`));
+    let minDist = count === 2 ? 0.44 : count === 3 ? 0.38 : 0.34;
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const pts = [];
+      for (let guard = 0; guard < 300 && pts.length < count; guard++) {
+        const p = { x: 0.22 + rand() * 0.56, y: 0.22 + rand() * 0.56 };
+        if (pts.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= minDist)) pts.push(p);
+      }
+      if (pts.length === count) return pts;
+      if (attempt % 40 === 39) minDist *= 0.92;
+    }
+    return Array.from({ length: count }, (_, i) => ({
+      x: 0.5 + Math.cos((i / count) * Math.PI * 2) * 0.27,
+      y: 0.5 + Math.sin((i / count) * Math.PI * 2) * 0.27,
+    }));
+  }
+
+  function rawHeights(seed, centers) {
     const height = new Float32Array(N * N);
     const moist = new Float32Array(N * N);
     const ns = G.hashSeed(`${seed}|terrain-noise`) || 1;
@@ -77,6 +96,19 @@
         const falloff = smoothstep(0, 0.16, edge);
         let h = continent * 0.62 + detail * 0.22 + ridge * mountainMask * 0.34;
         h = h * (0.72 + falloff * 0.28) - (1 - falloff) * 0.12;
+        if (centers.length) {
+          let d1 = Infinity;
+          let d2 = Infinity;
+          centers.forEach((c) => {
+            const d = Math.hypot(wx - c.x, wy - c.y);
+            if (d < d1) {
+              d2 = d1;
+              d1 = d;
+            } else if (d < d2) d2 = d;
+          });
+          const channel = smoothstep(0.015, 0.11, d2 - d1);
+          h = h * (0.6 + channel * 0.4) - (1 - channel) * 0.22 + smoothstep(0.34, 0.06, d1) * 0.1;
+        }
         const index = y * N + x;
         height[index] = h;
         moist[index] = fbm(nx * 3.4 + 5, ny * 3.4, ns + 509, 4);
@@ -204,8 +236,69 @@
     return { rivers, flow };
   }
 
-  function makeTerrain(seed) {
-    const { height, moist } = rawHeights(seed);
+  function labelLand(water, want) {
+    const comp = new Int32Array(N * N).fill(-1);
+    const sizes = [];
+    for (let start = 0; start < N * N; start++) {
+      if (water[start] === SEA || comp[start] >= 0) continue;
+      const id = sizes.length;
+      let size = 0;
+      const stack = [start];
+      comp[start] = id;
+      while (stack.length) {
+        const index = stack.pop();
+        size += 1;
+        const x = index % N;
+        const y = (index - x) / N;
+        if (x > 0 && comp[index - 1] < 0 && water[index - 1] !== SEA) { comp[index - 1] = id; stack.push(index - 1); }
+        if (x < N - 1 && comp[index + 1] < 0 && water[index + 1] !== SEA) { comp[index + 1] = id; stack.push(index + 1); }
+        if (y > 0 && comp[index - N] < 0 && water[index - N] !== SEA) { comp[index - N] = id; stack.push(index - N); }
+        if (y < N - 1 && comp[index + N] < 0 && water[index + N] !== SEA) { comp[index + N] = id; stack.push(index + N); }
+      }
+      sizes.push(size);
+    }
+    const land = sizes.reduce((a, b) => a + b, 0);
+    const big = sizes.map((size, id) => ({ id, size }))
+      .sort((a, b) => b.size - a.size)
+      .filter((c, i) => i === 0 || c.size >= land * 0.08)
+      .slice(0, Math.max(1, want));
+    const continent = new Uint8Array(N * N).fill(255);
+    const queue = new Int32Array(N * N);
+    let head = 0;
+    let tail = 0;
+    const info = big.map((c, k) => ({ id: k, size: c.size, sx: 0, sy: 0 }));
+    for (let i = 0; i < N * N; i++) {
+      const k = big.findIndex((c) => c.id === comp[i]);
+      if (k < 0) continue;
+      continent[i] = k;
+      queue[tail++] = i;
+      info[k].sx += i % N;
+      info[k].sy += Math.floor(i / N);
+    }
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % N;
+      const y = (index - x) / N;
+      const k = continent[index];
+      [x > 0 ? index - 1 : -1, x < N - 1 ? index + 1 : -1, y > 0 ? index - N : -1, y < N - 1 ? index + N : -1].forEach((next) => {
+        if (next >= 0 && continent[next] === 255) {
+          continent[next] = k;
+          queue[tail++] = next;
+        }
+      });
+    }
+    const continents = info.map((c) => ({
+      id: c.id,
+      size: c.size,
+      x: ((c.sx / c.size + 0.5) / N) * 1000,
+      y: ((c.sy / c.size + 0.5) / N) * 1000,
+    }));
+    return { continent, continents };
+  }
+
+  function makeTerrain(seed, continentCount) {
+    const want = continentCount || 1;
+    const { height, moist } = rawHeights(seed, continentCenters(seed, want));
     const rand = G.mulberry32(G.hashSeed(`${seed}|sea`));
     const sorted = Array.from(height).sort((a, b) => a - b);
     const waterShare = 0.5 + rand() * 0.1;
@@ -223,7 +316,12 @@
       if (water[i] === LAKE) elev[i] = Math.min(elev[i], -0.02);
     }
     const { rivers, flow } = carveRivers(seed, elev, water);
-    return { N, elev, moist, water, flow, rivers };
+    const { continent, continents } = labelLand(water, want);
+    return { N, elev, moist, water, flow, rivers, continent, continents };
+  }
+
+  function continentAt(terrain, x, y) {
+    return terrain.continent[cellOf(terrain, x, y)];
   }
 
   function cellOf(terrain, x, y) {
@@ -289,4 +387,5 @@
   G.biomeOf = biomeOf;
   G.biomeAt = biomeAt;
   G.isDryLand = isDryLand;
-})(window.AlienGuessr = window.AlienGuessr || {});
+  G.continentAt = continentAt;
+})(window.ProbeDrop = window.ProbeDrop || {});

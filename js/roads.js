@@ -215,18 +215,28 @@
       }
     }
     candidates.sort((a, b) => b.score - a.score);
-    const towns = [];
-    planet.regions.forEach((region) => {
-      const pick = candidates.find((cand) => G.nearestRegion(planet, cand.x, cand.y) === region
-        && towns.every((town) => Math.hypot(town.x - cand.x, town.y - cand.y) > 60));
-      if (pick) towns.push({ ...pick, kind: "city", regionId: region.id });
+    candidates.forEach((cand) => {
+      cand.regionId = G.nearestRegion(planet, cand.x, cand.y).id;
     });
-    const target = Math.min(32, planet.regions.length + 10);
+    const towns = [];
+    const clear = (cand, gap) => towns.every((town) => Math.hypot(town.x - cand.x, town.y - cand.y) > gap);
+    const add = (cand, kind) => {
+      const province = planet.regions[cand.regionId];
+      towns.push({ ...cand, kind, countryId: province.countryId, continentId: province.continentId });
+    };
+    planet.countries.forEach((country) => {
+      const pick = candidates.find((cand) => planet.regions[cand.regionId].countryId === country.id && clear(cand, 60));
+      if (pick) add(pick, "city");
+    });
+    const cap = Math.min(46, planet.countries.length + planet.regions.length);
+    planet.regions.forEach((region) => {
+      if (towns.length >= cap || towns.some((town) => town.regionId === region.id)) return;
+      const pick = candidates.find((cand) => cand.regionId === region.id && clear(cand, 52));
+      if (pick) add(pick, "village");
+    });
+    const target = Math.min(cap, planet.regions.length + 10);
     for (let i = 0; i < candidates.length && towns.length < target; i++) {
-      const cand = candidates[i];
-      if (towns.every((town) => Math.hypot(town.x - cand.x, town.y - cand.y) > 95)) {
-        towns.push({ ...cand, kind: "village", regionId: G.nearestRegion(planet, cand.x, cand.y).id });
-      }
+      if (clear(candidates[i], 95)) add(candidates[i], "village");
     }
     const used = new Set();
     towns.forEach((town) => {
@@ -256,20 +266,24 @@
       return true;
     };
 
-    const inTree = new Set([0]);
     const edges = [];
-    while (towns.length && inTree.size < towns.length) {
-      let best = null;
-      inTree.forEach((a) => {
-        towns.forEach((town, b) => {
-          if (inTree.has(b)) return;
-          const dist = Math.hypot(town.x - towns[a].x, town.y - towns[a].y);
-          if (!best || dist < best.dist) best = { a, b, dist };
+    planet.continents.forEach((continent) => {
+      const members = towns.map((town, i) => i).filter((i) => towns[i].continentId === continent.id);
+      if (!members.length) return;
+      const inTree = new Set([members[0]]);
+      while (inTree.size < members.length) {
+        let best = null;
+        inTree.forEach((a) => {
+          members.forEach((b) => {
+            if (inTree.has(b)) return;
+            const dist = Math.hypot(towns[b].x - towns[a].x, towns[b].y - towns[a].y);
+            if (!best || dist < best.dist) best = { a, b, dist };
+          });
         });
-      });
-      inTree.add(best.b);
-      edges.push(best);
-    }
+        inTree.add(best.b);
+        edges.push(best);
+      }
+    });
     edges.sort((p, q) => p.dist - q.dist);
     const linked = new Set();
     edges.forEach((edge) => {
@@ -280,7 +294,7 @@
     towns.forEach((town, a) => {
       const others = towns
         .map((other, b) => ({ b, dist: Math.hypot(other.x - town.x, other.y - town.y) }))
-        .filter((item) => item.b !== a && item.dist < 240)
+        .filter((item) => item.b !== a && item.dist < 240 && towns[item.b].continentId === town.continentId)
         .sort((p, q) => p.dist - q.dist)
         .slice(0, 3);
       others.forEach((item) => {
@@ -311,6 +325,18 @@
     planet.regions.forEach((region) => {
       if (covered.has(region.id)) return;
       const town = towns.find((t) => t.regionId === region.id);
+      if (!town) {
+        const hub = towns
+          .filter((t) => t.continentId === region.continentId)
+          .sort((p, q) => Math.hypot(p.x - region.site.x, p.y - region.site.y) - Math.hypot(q.x - region.site.x, q.y - region.site.y))[0];
+        for (let attempt = 0; hub && attempt < 12; attempt++) {
+          const x = region.site.x + (rand() - 0.5) * 60;
+          const y = region.site.y + (rand() - 0.5) * 60;
+          const target = cellIndexOf(x, y);
+          if (grid.blocked[target] || G.nearestRegion(planet, x, y) !== region) continue;
+          if (addRoute(hub.index, target, "minor")) return;
+        }
+      }
       const start = town ? town.index : cellIndexOf(region.site.x, region.site.y);
       for (let attempt = 0; attempt < 16; attempt++) {
         const angle = rand() * Math.PI * 2;
@@ -429,4 +455,4 @@
   G.randomRoadSpot = randomRoadSpot;
   G.roadAhead = roadAhead;
   G.settlementAt = settlementAt;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

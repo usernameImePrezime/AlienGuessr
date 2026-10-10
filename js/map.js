@@ -105,8 +105,83 @@
     ctx.restore();
   }
 
+  function spacedText(ctx, text, x, y, size, rects, style) {
+    ctx.save();
+    ctx.font = `${size}px "Luckiest Guy", Fredoka, sans-serif`;
+    ctx.letterSpacing = `${size * style.spacing}px`;
+    const w = ctx.measureText(text).width;
+    const rect = { l: x - w / 2 - 4, r: x + w / 2 + 4, t: y - size * 0.62, b: y + size * 0.62 };
+    if (rects.some((o) => rect.l < o.r && rect.r > o.l && rect.t < o.b && rect.b > o.t)) {
+      ctx.restore();
+      return;
+    }
+    rects.push(rect);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = style.alpha;
+    ctx.lineWidth = size * style.halo;
+    ctx.strokeStyle = style.stroke;
+    ctx.strokeText(text, x, y + size * 0.08);
+    ctx.fillStyle = style.fill;
+    ctx.fillText(text, x, y + size * 0.08);
+    ctx.restore();
+  }
+
+  function drawPlaceNames(ctx, planet, box, unit, rects) {
+    const labels = planet.atlas && planet.atlas.labels;
+    if (!labels) return;
+    if (view.zoom < 2.3) {
+      const fade = clamp((2.3 - view.zoom) / 0.6, 0, 1);
+      labels.continents.forEach((label) => {
+        const p = mapToCanvas(label, box);
+        spacedText(ctx, label.name.toUpperCase(), p.x, p.y, 14 * unit, rects, {
+          spacing: 0.42, alpha: 0.9 * fade, halo: 0.34, stroke: "rgba(36, 62, 140, 0.85)", fill: "#f4fbff",
+        });
+      });
+    }
+    if (view.zoom > 4) return;
+    const grow = 1 + (Math.min(view.zoom, 3) - 1) * 0.32;
+    labels.countries.slice().sort((a, b) => b.area - a.area).forEach((label) => {
+      if (!label.area) return;
+      const p = mapToCanvas(label, box);
+      const size = clamp(5.5 + Math.sqrt(label.area) * 0.07, 7, 13.5) * unit * grow;
+      spacedText(ctx, label.name.toUpperCase(), p.x, p.y, size, rects, {
+        spacing: 0.1, alpha: 0.92, halo: 0.36, stroke: "rgba(255, 248, 230, 0.95)", fill: "#6b1d55",
+      });
+    });
+  }
+
+  function drawHighlight(ctx, atlas, countryId, box) {
+    if (!atlas.highlight) return;
+    atlas.tinted = atlas.tinted || new Map();
+    if (!atlas.tinted.has(countryId)) {
+      const mask = atlas.highlight(countryId);
+      const canvas = document.createElement("canvas");
+      canvas.width = mask.width;
+      canvas.height = mask.height;
+      const c = canvas.getContext("2d");
+      c.filter = "blur(1.5px)";
+      c.drawImage(mask, 0, 0);
+      c.filter = "none";
+      c.globalCompositeOperation = "source-in";
+      c.fillStyle = "rgba(255, 222, 70, 0.55)";
+      c.fillRect(0, 0, canvas.width, canvas.height);
+      atlas.tinted.set(countryId, canvas);
+    }
+    const tinted = atlas.tinted.get(countryId);
+    const k = tinted.width / 1000;
+    const s = span();
+    const t = clamp(view.reveal, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = t;
+    ctx.drawImage(tinted, (view.cx - s / 2) * k, (view.cy - s / 2) * k, s * k, s * k, box.left, box.top, box.size, box.size);
+    ctx.restore();
+  }
+
   function drawLabels(ctx, planet, box, unit, width, height) {
     const rects = [];
+    drawPlaceNames(ctx, planet, box, unit, rects);
     const atlasScale = box.size / (span() * 2.048);
     const ordered = planet.towns.slice().sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "city" ? -1 : 1));
     ordered.forEach((town) => {
@@ -266,6 +341,14 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(atlas.canvas, (view.cx - s / 2) * k, (view.cy - s / 2) * k, s * k, s * k, box.left, box.top, box.size, box.size);
+    const provinceFade = clamp((view.zoom - 1.4) / 0.8, 0, 1);
+    if (provinceFade > 0 && atlas.provinces) {
+      ctx.save();
+      ctx.globalAlpha = provinceFade;
+      ctx.drawImage(atlas.provinces, (view.cx - s / 2) * k, (view.cy - s / 2) * k, s * k, s * k, box.left, box.top, box.size, box.size);
+      ctx.restore();
+    }
+    if (options.highlight !== undefined && options.highlight !== null) drawHighlight(ctx, atlas, options.highlight, box);
     const unit = clamp(box.size / 460, 0.7, 2.4);
     drawLabels(ctx, planet, box, unit, width, height);
 
@@ -448,4 +531,4 @@
   G.drawMap = drawMap;
   G.eventToMap = eventToMap;
   G.mapView = { attach, fit, reset, zoomBy, state: view };
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

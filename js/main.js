@@ -14,9 +14,14 @@
   }
 
   function difficultyHint(level) {
-    if (level === "medium") return "Twelve regions. Pair the street stuff with the sky stuff.";
-    if (level === "hard") return "Twenty regions. Neighbors share a sky. Read signs, poles, stars, and the locals' faces.";
-    return "Six big regions. The sky, the locals, and the vibes give it away.";
+    if (level === "medium") return "A few continents, twelve countries. Bollards, plates and road lines start to matter.";
+    if (level === "hard") return "Up to four continents, twenty countries. Neighbors look alike: read poles, phone codes and km markers.";
+    return "One continent, six countries. The sky and the color of the locals give it away.";
+  }
+
+  function placeName(place) {
+    if (place.sea) return "the open sea";
+    return `${place.country.name} (${place.province.name})`;
   }
 
   function quip(points) {
@@ -133,6 +138,7 @@
     G.drawMap(map.getContext("2d"), mapSize.width, mapSize.height, match.planet, {
       pin: match.pin,
       truth: revealed ? G.currentRound(match) : null,
+      highlight: revealed ? G.placeOfRegion(match.planet, G.currentRound(match).regionId).country.id : null,
     });
   }
 
@@ -176,146 +182,27 @@
     const tag = $("place-tag");
     tag.hidden = !revealed;
     if (match.lastResult) {
-      $("result-quip").textContent = quip(match.lastResult.points);
-      $("round-points").textContent = formatPoints(match.lastResult.points);
-      $("distance-label").textContent = `${Math.round(match.lastResult.dist)} units off`;
+      const result = match.lastResult;
+      $("result-quip").textContent = quip(result.base);
+      $("round-points").textContent = formatPoints(result.points);
+      $("result-place").textContent = `You guessed ${placeName(result.guess)}, it was ${placeName(result.truth)}`;
+      const bonus = $("result-bonus");
+      bonus.hidden = !result.bonus.points;
+      bonus.textContent = [
+        result.bonus.country ? `+${G.BONUS.country} right country` : "",
+        result.bonus.province ? `+${G.BONUS.province} right province` : "",
+      ].filter(Boolean).join(" · ");
+      $("distance-label").textContent = `${Math.round(result.dist)} units off · ${formatPoints(result.base)} for distance`;
       const round = G.currentRound(match);
       const place = G.settlementAt(match.planet, round.x, round.y);
       const where = place.kind === "wild"
         ? `Somewhere outside ${place.town ? place.town.name : "civilization"}`
         : `${place.kind === "city" ? "Downtown" : place.town.kind === "city" ? "Outskirts of" : "Village of"} ${place.town.name}`;
-      tag.textContent = `${where} · Region ${round.regionId + 1}`;
+      tag.textContent = `${where} · ${result.truth.province.name}, ${result.truth.country.name}`;
     }
 
-    const showClues = study && revealed;
-    $("clue-panel").hidden = !showClues;
-    if (showClues) renderClues(G.currentRegion(match).profile);
-  }
-
-  function renderClues(profile) {
-    const alienNames = { blue: "Blue", pink: "Pink", mixed: "Blue and pink" };
-    const poleNames = { ball: "Ball top", ring: "Ring top", fork: "Fork top", none: "Plain pole" };
-    const eventNames = {
-      ring: "Ringed oddity",
-      eye: "Eye world",
-      jelly: "Jelly moon",
-      shard: "Shattered planet",
-      spiral: "Spiral sky",
-      worm: "Sky serpent",
-    };
-    const plantNames = {
-      mushroom: "Giant mushrooms",
-      palm: "Space palms",
-      tentacle: "Tentacle vines",
-      crystal: "Crystal clusters",
-      eyestalk: "Eyestalks",
-      bulb: "Glow bulbs",
-      spiralfern: "Spiral ferns",
-      balloon: "Balloon pods",
-    };
-    const species = profile.alienSpecies;
-    const eyeNames = { 1: "one eye", 2: "two eyes", 3: "three eyes" };
-    const detail = species.detail === "none" ? "bald" : titleCase(species.detail).toLowerCase();
-    const groups = [
-      ["Locals", [
-        ["Colors", `${alienNames[profile.alienMix]}, ${profile.alienHeight}`, null],
-      ]],
-      ["Sky", [
-        ["Sky", "Two-tone", profile.skyGradient],
-        ["Stars", titleCase(profile.starPattern), null],
-        ["Sky event", eventNames[profile.skyEvent] || titleCase(profile.skyEvent), null],
-        ["Weather", titleCase(profile.weather), null],
-      ]],
-      ["Land", [
-        ["Rocks", titleCase(profile.terrain), null],
-        ["Grass", "Ground color", profile.groundColor],
-        ["Soil pattern", titleCase(profile.groundPattern), null],
-        ["Plants", plantNames[profile.vegetation] || titleCase(profile.vegetation), profile.vegetationColor],
-      ]],
-      ["Street", [
-        ["Road", titleCase(profile.pathStyle), profile.pathLineColor],
-        ["Driving side", titleCase(profile.drivingSide), null],
-        ["Fence", titleCase(profile.fence), profile.poleColor],
-        ["Decor", titleCase(profile.banner), profile.accentColor],
-      ]],
-      ["Built", [
-        ["Roof", titleCase(profile.roofShape), profile.roofColor],
-        ["Walls", "Wall paint", profile.wallColor],
-        ["Windows", titleCase(profile.windowStyle), null],
-        ["Pole", poleNames[profile.poleTop], profile.poleColor],
-        ["Sign", titleCase(profile.signShape), profile.accentColor],
-        ["Glyph", `Symbol ${profile.signGlyph + 1}`, "glyph"],
-      ]],
-    ];
-
-    const list = $("clue-list");
-    list.replaceChildren();
-    groups.forEach(([title, rows]) => {
-      const group = document.createElement("section");
-      group.className = "clue-group";
-      const heading = document.createElement("h3");
-      heading.textContent = title;
-      const grid = document.createElement("div");
-      grid.className = "clue-rows";
-      if (title === "Locals") {
-        const text = G.describeSpecies ? G.describeSpecies(species) : `Body ${species.body}, ${eyeNames[species.eyes]}, ${detail}`;
-        grid.appendChild(speciesCard(profile, text));
-      }
-      rows.forEach((row) => grid.appendChild(clueRow(profile, row)));
-      group.append(heading, grid);
-      list.appendChild(group);
-    });
-  }
-
-  function speciesCard(profile, text) {
-    const card = document.createElement("div");
-    card.className = "species-card";
-    const canvas = document.createElement("canvas");
-    canvas.width = 1040;
-    canvas.height = 600;
-    G.drawSpeciesCard(canvas.getContext("2d"), profile, canvas.width, canvas.height);
-    const caption = document.createElement("div");
-    caption.className = "species-caption";
-    const name = document.createElement("span");
-    name.textContent = "Species";
-    const value = document.createElement("strong");
-    value.textContent = text;
-    caption.append(name, value);
-    card.append(canvas, caption);
-    return card;
-  }
-
-  function clueRow(profile, [label, text, color]) {
-    const row = document.createElement("div");
-    row.className = "clue";
-    if (color === "glyph") {
-      const canvas = document.createElement("canvas");
-      canvas.className = "glyph-swatch";
-      canvas.width = 72;
-      canvas.height = 72;
-      row.appendChild(canvas);
-      const ink = profile.accentColor.l > 62 ? "#1a1024" : "#f7f4ff";
-      canvas.style.background = G.cssColor(profile.accentColor);
-      G.drawGlyph(canvas.getContext("2d"), profile.signGlyph, 36, 36, 46, ink);
-    } else if (Array.isArray(color)) {
-      const swatch = document.createElement("div");
-      swatch.className = "swatch";
-      swatch.style.background = `linear-gradient(${G.cssColor(color[0])}, ${G.cssColor(color[1])})`;
-      row.appendChild(swatch);
-    } else if (color) {
-      const swatch = document.createElement("div");
-      swatch.className = "swatch";
-      swatch.style.background = G.cssColor(color);
-      row.appendChild(swatch);
-    }
-    const copy = document.createElement("div");
-    const name = document.createElement("span");
-    name.textContent = label;
-    const value = document.createElement("strong");
-    value.textContent = text;
-    copy.append(name, value);
-    row.appendChild(copy);
-    return row;
+    if (study && revealed) G.guide.open(match);
+    else G.guide.close();
   }
 
   async function copyText(text, button) {
@@ -380,6 +267,7 @@
     show("start");
   });
   $("copy-seed").addEventListener("click", () => copyText(match.seed, $("copy-seed")));
+  G.guide.attach();
   G.mapView.attach($("map"), {
     redraw: () => {
       if (match && !screens.play.hidden) drawMapOnly();
@@ -434,4 +322,4 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(draw, 80);
   });
-})(window.AlienGuessr);
+})(window.ProbeDrop);

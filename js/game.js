@@ -47,11 +47,15 @@
     if (!match.pin || match.phase !== "guessing") return;
     const round = currentRound(match);
     const dist = G.distance(match.pin, round);
-    const points = G.pointsForDistance(dist);
+    const base = G.pointsForDistance(dist);
+    const guess = G.placeAt(match.planet, match.pin.x, match.pin.y);
+    const truth = G.placeOfRegion(match.planet, round.regionId);
+    const bonus = G.placeBonus(guess, truth);
+    const points = base + bonus.points;
     match.totalScore += points;
     match.roundScores.push(points);
     match.bestRound = Math.max(match.bestRound, points);
-    match.lastResult = { dist, points, total: match.totalScore };
+    match.lastResult = { dist, base, bonus, points, guess, truth, total: match.totalScore };
     match.phase = "revealed";
   }
 
@@ -72,4 +76,4 @@
   G.averageScore = averageScore;
   G.submitGuess = submitGuess;
   G.advance = advance;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

@@ -1123,34 +1123,72 @@
       });
     });
 
+    const political = politicalGrid(planet);
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.filter = "blur(2px)";
+    ctx.drawImage(political.tint, 0, 0, A, A);
+    ctx.restore();
+
     const borders = layer();
     const bc = borders.getContext("2d");
-    bc.lineCap = "round";
-    bc.lineJoin = "round";
-    const seam = (region) => {
-      bc.beginPath();
-      region.polygon.forEach((p, i) => {
-        if (i === 0) bc.moveTo(p.x * K, p.y * K);
-        else bc.lineTo(p.x * K, p.y * K);
+    const provinceLayer = layer();
+    const pc = provinceLayer.getContext("2d");
+    const seam = (c, polygon) => {
+      c.beginPath();
+      polygon.forEach((p, i) => {
+        if (i === 0) c.moveTo(p.x * K, p.y * K);
+        else c.lineTo(p.x * K, p.y * K);
       });
-      bc.closePath();
+      c.closePath();
     };
-    planet.regions.forEach((region) => {
-      seam(region);
-      bc.strokeStyle = "rgba(255, 250, 235, 0.4)";
-      bc.lineWidth = 9;
-      bc.stroke();
+    const scratch = layer();
+    const sc2 = scratch.getContext("2d");
+    planet.continents.forEach((continent) => {
+      const mask = political.continentMask(continent.id);
+      const countries = continent.countryIds.map((id) => planet.countries[id]);
+      [[bc, () => {
+        sc2.lineCap = "round";
+        sc2.lineJoin = "round";
+        countries.forEach((country) => {
+          seam(sc2, country.polygon);
+          sc2.strokeStyle = "rgba(255, 250, 235, 0.6)";
+          sc2.lineWidth = 12;
+          sc2.stroke();
+        });
+        sc2.setLineDash([16, 6, 4, 6]);
+        countries.forEach((country) => {
+          seam(sc2, country.polygon);
+          sc2.strokeStyle = "rgba(120, 28, 92, 0.9)";
+          sc2.lineWidth = 4.2;
+          sc2.stroke();
+        });
+        sc2.setLineDash([]);
+      }], [pc, () => {
+        sc2.lineCap = "round";
+        sc2.setLineDash([0.1, 9]);
+        countries.forEach((country) => {
+          if (country.provinceIds.length < 2) return;
+          country.provinceIds.forEach((id) => {
+            seam(sc2, planet.regions[id].polygon);
+            sc2.strokeStyle = "rgba(120, 28, 92, 0.75)";
+            sc2.lineWidth = 3.2;
+            sc2.stroke();
+          });
+        });
+        sc2.setLineDash([]);
+      }]].forEach(([target, paintLines]) => {
+        sc2.clearRect(0, 0, A, A);
+        sc2.globalCompositeOperation = "source-over";
+        paintLines();
+        sc2.globalCompositeOperation = "destination-in";
+        sc2.filter = "blur(2.5px)";
+        sc2.drawImage(mask, 0, 0, A, A);
+        sc2.filter = "none";
+        sc2.globalCompositeOperation = "source-over";
+        target.drawImage(scratch, 0, 0);
+      });
     });
-    bc.setLineDash([9, 8]);
-    planet.regions.forEach((region) => {
-      seam(region);
-      bc.strokeStyle = "rgba(160, 40, 120, 0.75)";
-      bc.lineWidth = 2.8;
-      bc.stroke();
-    });
-    bc.setLineDash([]);
-    bc.globalCompositeOperation = "destination-in";
-    bc.drawImage(wash.land, 0, 0);
     ctx.drawImage(borders, 0, 0);
 
     const icons = [];
@@ -1315,10 +1353,174 @@
       ctx.restore();
     }
 
-    planet.atlas = { canvas, size: A, ms: performance.now() - started, volcano: peak && { x: peak.x, y: peak.y } };
+    planet.atlas = {
+      canvas,
+      size: A,
+      provinces: provinceLayer,
+      labels: { countries: political.countryLabels, continents: continentLabels(planet, political) },
+      highlight: political.highlight,
+      ms: performance.now() - started,
+      volcano: peak && { x: peak.x, y: peak.y },
+    };
     return planet.atlas;
+  }
+
+  // ---------- political ----------
+
+  const TINTS = [[255, 214, 232], [210, 238, 255], [255, 240, 178], [214, 250, 204], [232, 218, 255], [255, 224, 200]];
+
+  function politicalGrid(planet) {
+    const n = BASE;
+    const t = planet.terrain;
+    const owner = new Uint8Array(n * n).fill(255);
+    const stats = planet.countries.map(() => ({ sx: 0, sy: 0, count: 0, minX: 1000, maxX: 0, minY: 1000, maxY: 0 }));
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const mx = ((x + 0.5) / n) * 1000;
+        const my = ((y + 0.5) / n) * 1000;
+        const w = G.waterAt(t, mx, my);
+        if (w === G.WATER.SEA || w === G.WATER.LAKE) continue;
+        const id = G.placeAt(planet, mx, my).country.id;
+        owner[y * n + x] = id;
+        const s = stats[id];
+        s.sx += mx;
+        s.sy += my;
+        s.count += 1;
+        s.minX = Math.min(s.minX, mx);
+        s.maxX = Math.max(s.maxX, mx);
+        s.minY = Math.min(s.minY, my);
+        s.maxY = Math.max(s.maxY, my);
+      }
+    }
+    const touching = planet.countries.map(() => new Set());
+    for (let i = 0; i < n * n; i++) {
+      const a = owner[i];
+      if (a === 255) continue;
+      const right = i % n < n - 1 ? owner[i + 1] : 255;
+      const down = i + n < n * n ? owner[i + n] : 255;
+      [right, down].forEach((b) => {
+        if (b !== 255 && b !== a) {
+          touching[a].add(b);
+          touching[b].add(a);
+        }
+      });
+    }
+    const tintOf = [];
+    planet.countries.forEach((country) => {
+      const taken = new Set([...touching[country.id]].map((other) => tintOf[other]).filter((v) => v !== undefined));
+      let pick = country.id % TINTS.length;
+      for (let k = 0; k < TINTS.length && taken.has(pick); k++) pick = (pick + 1) % TINTS.length;
+      tintOf[country.id] = pick;
+    });
+    const tint = document.createElement("canvas");
+    tint.width = n;
+    tint.height = n;
+    const tc = tint.getContext("2d");
+    const img = tc.createImageData(n, n);
+    for (let i = 0; i < n * n; i++) {
+      const id = owner[i];
+      const c = id === 255 ? [255, 255, 255] : TINTS[tintOf[id]];
+      img.data[i * 4] = c[0];
+      img.data[i * 4 + 1] = c[1];
+      img.data[i * 4 + 2] = c[2];
+      img.data[i * 4 + 3] = 255;
+    }
+    tc.putImageData(img, 0, 0);
+
+    const maskOf = (test) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = n;
+      canvas.height = n;
+      const mc = canvas.getContext("2d");
+      const data = mc.createImageData(n, n);
+      for (let i = 0; i < n * n; i++) {
+        if (owner[i] !== 255 && test(owner[i])) data.data[i * 4 + 3] = 255;
+      }
+      mc.putImageData(data, 0, 0);
+      return canvas;
+    };
+    const highlights = new Map();
+    const countryLabels = planet.countries.map((country) => {
+      const s = stats[country.id];
+      if (!s.count) return { id: country.id, name: country.name, x: country.site.x, y: country.site.y, area: 0 };
+      const cx = s.sx / s.count;
+      const cy = s.sy / s.count;
+      let best = null;
+      let bestScore = Infinity;
+      for (let y = 0; y < n; y += 2) {
+        for (let x = 0; x < n; x += 2) {
+          if (owner[y * n + x] !== country.id) continue;
+          const mx = ((x + 0.5) / n) * 1000;
+          const my = ((y + 0.5) / n) * 1000;
+          let inside = 0;
+          for (let r = 1; r <= 4; r++) {
+            const d = r * 5;
+            const ok = [[d, 0], [-d, 0], [0, d], [0, -d]].every(([dx, dy]) => {
+              const px = clamp(x + dx, 0, n - 1);
+              const py = clamp(y + dy, 0, n - 1);
+              return owner[py * n + px] === country.id;
+            });
+            if (!ok) break;
+            inside = r;
+          }
+          const score = Math.hypot(mx - cx, my - cy) - inside * 18;
+          if (score < bestScore) {
+            bestScore = score;
+            best = { x: mx, y: my };
+          }
+        }
+      }
+      return { id: country.id, name: country.name, x: best.x, y: best.y, area: s.count, box: s };
+    });
+    return {
+      owner,
+      tint,
+      countryLabels,
+      continentMask: (id) => maskOf((owner) => planet.countries[owner].continentId === id),
+      highlight: (id) => {
+        if (!highlights.has(id)) highlights.set(id, maskOf((owner) => owner === id));
+        return highlights.get(id);
+      },
+    };
+  }
+
+  function continentLabels(planet, political) {
+    const t = planet.terrain;
+    const placed = [];
+    return planet.continents.map((continent) => {
+      const boxes = continent.countryIds.map((id) => political.countryLabels[id].box).filter(Boolean);
+      const minX = Math.min(...boxes.map((b) => b.minX));
+      const maxX = Math.max(...boxes.map((b) => b.maxX));
+      const minY = Math.min(...boxes.map((b) => b.minY));
+      const maxY = Math.max(...boxes.map((b) => b.maxY));
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const options = [];
+      [-1, 1].forEach((side) => {
+        for (let k = -2; k <= 2; k++) {
+          options.push({ x: cx + k * 60, y: side < 0 ? minY - 30 : maxY + 30 });
+        }
+      });
+      [-1, 1].forEach((side) => {
+        for (let k = -1; k <= 1; k++) options.push({ x: side < 0 ? minX - 70 : maxX + 70, y: cy + k * 70 });
+      });
+      let best = { x: continent.x, y: continent.y, over: true };
+      let bestScore = -Infinity;
+      options.forEach((o) => {
+        if (o.x < 110 || o.x > 890 || o.y < 50 || o.y > 950) return;
+        const wet = waterShare(t, o.x, o.y, 38) + waterShare(t, o.x - 70, o.y, 20) * 0.3 + waterShare(t, o.x + 70, o.y, 20) * 0.3;
+        const crowd = placed.some((p) => Math.abs(p.x - o.x) < 220 && Math.abs(p.y - o.y) < 60) ? 2 : 0;
+        const score = wet - crowd - Math.hypot(o.x - cx, o.y - cy) / 2000;
+        if (score > bestScore) {
+          bestScore = score;
+          best = o;
+        }
+      });
+      placed.push(best);
+      return { id: continent.id, name: continent.name, x: best.x, y: best.y };
+    });
   }
 
   G.buildAtlas = buildAtlas;
   G.ATLAS_SEA = "#5680d2";
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

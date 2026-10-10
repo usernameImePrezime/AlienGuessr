@@ -9,4 +9,4 @@
   }
 
   G.assetsReady = loadFonts();
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

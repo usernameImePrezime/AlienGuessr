@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Alien Guessr</title>
+  <title>Probe Drop</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -25,14 +25,14 @@
           </div>
         </div>
         <p class="eyebrow">Interdimensional geography, probably legal</p>
-        <h1 class="logo"><span>Alien</span><span>Guessr</span></h1>
+        <h1 class="logo"><span>Probe</span><span>Drop</span></h1>
         <p class="lede">We beam you to a random road on a weird planet. Look around without moving, then guess where you are. Then we do it again. Forever.</p>
-        <p id="diff-hint" class="quiet">Six big regions. The sky, the locals, and the vibes give it away.</p>
+        <p id="diff-hint" class="quiet">One continent, six countries. The sky and the color of the locals give it away.</p>
 
         <div class="difficulty" role="group" aria-label="Difficulty">
-          <button type="button" class="diff is-selected" data-difficulty="easy"><strong>Easy</strong><small>6 regions</small></button>
-          <button type="button" class="diff" data-difficulty="medium"><strong>Medium</strong><small>12 regions</small></button>
-          <button type="button" class="diff" data-difficulty="hard"><strong>Hard</strong><small>20 regions</small></button>
+          <button type="button" class="diff is-selected" data-difficulty="easy"><strong>Easy</strong><small>1 continent · 6 countries</small></button>
+          <button type="button" class="diff" data-difficulty="medium"><strong>Medium</strong><small>2-3 continents · 12 countries</small></button>
+          <button type="button" class="diff" data-difficulty="hard"><strong>Hard</strong><small>3-4 continents · 20 countries</small></button>
         </div>
 
         <label class="seed-field">
@@ -57,7 +57,7 @@
         <div class="play-main">
           <header class="hud">
             <div class="hud-brand">
-              <span class="hud-logo">Alien Guessr</span>
+              <span class="hud-logo">Probe Drop</span>
               <span id="mode-label" class="pill mode">Endless</span>
               <span id="difficulty-pill" class="pill">Easy</span>
             </div>
@@ -100,6 +100,23 @@
               </svg>
               <span id="photo-compass-label" class="photo-compass-label">Facing N</span>
             </div>
+            <section id="field-guide" class="field-guide" aria-label="Field Guide" hidden>
+              <header class="guide-head">
+                <div class="guide-titles">
+                  <span class="guide-kicker">Field Guide</span>
+                  <h2 id="guide-title"></h2>
+                </div>
+                <div class="guide-tabs" role="tablist">
+                  <button type="button" role="tab" class="guide-tab is-active" data-level="continent" aria-selected="true">Continent<small></small></button>
+                  <button type="button" role="tab" class="guide-tab" data-level="country" aria-selected="false">Country<small></small></button>
+                  <button type="button" role="tab" class="guide-tab" data-level="province" aria-selected="false">Province<small></small></button>
+                </div>
+                <button type="button" id="guide-close" class="chip guide-close">Back to photo</button>
+              </header>
+              <p id="guide-note" class="guide-note"></p>
+              <div id="guide-cards" class="guide-cards"></div>
+            </section>
+            <button type="button" id="guide-open" class="chip guide-open" hidden>Open Field Guide</button>
           </div>
         </div>
 
@@ -159,13 +176,10 @@
           <div id="result-banner" class="result-card" hidden>
             <p id="result-quip" class="quip"></p>
             <p class="result-points"><strong id="round-points">0</strong> points</p>
+            <p id="result-place" class="result-place"></p>
+            <p id="result-bonus" class="result-bonus" hidden></p>
             <p id="distance-label" class="quiet"></p>
             <button type="button" id="next-btn" class="primary blob wide">Next location</button>
-          </div>
-
-          <div id="clue-panel" class="clue-panel" hidden>
-            <h2>Region clues</h2>
-            <div id="clue-list" class="clue-list"></div>
           </div>
         </aside>
       </div>
@@ -177,13 +191,16 @@
   <script src="js/glyphs.js"></script>
   <script src="js/score.js"></script>
   <script src="js/terrain.js"></script>
+  <script src="js/metas.js"></script>
   <script src="js/world.js"></script>
   <script src="js/roads.js"></script>
   <script src="js/assets.js"></script>
   <script src="js/watercolor.js"></script>
   <script src="js/props.js"></script>
+  <script src="js/metaprops.js"></script>
   <script src="js/characters.js"></script>
   <script src="js/scene.js"></script>
+  <script src="js/guide.js"></script>
   <script src="js/mapart.js"></script>
   <script src="js/map.js"></script>
   <script src="js/game.js"></script>

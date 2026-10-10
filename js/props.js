@@ -157,9 +157,11 @@
   }
 
   function shadowBlob(ctx, x, y, rx, ry) {
+    const light = G.light || { dx: 0, dy: 0 };
+    const stretch = 1 + Math.abs(light.dx) * 0.6;
     ctx.fillStyle = "rgba(27, 16, 51, 0.22)";
     ctx.beginPath();
-    ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.ellipse(x + light.dx * rx * 0.55, y + light.dy * ry * 0.5, rx * stretch, ry * (1 + Math.max(0, light.dy) * 0.4), 0, 0, TAU);
     ctx.fill();
   }
 
@@ -1692,19 +1694,80 @@
     const s = base.s;
     const iw = inkW(s, U);
     const w = Math.max(1, s * 0.13);
-    const c = shown ? profile.poleColor : { h: 30, s: 25, l: 48 };
-    paint(ctx, () => {
+    const body = shown ? profile.poleBody : null;
+    const wood = { h: 28, s: 42, l: 44 };
+    let c = shown ? profile.poleColor : { h: 30, s: 25, l: 48 };
+    if (body === "wood" || body === "crossbar") c = wood;
+    if (body === "holes") c = { h: 240, s: 6, l: 74 };
+    if (body === "lattice") c = { h: 250, s: 12, l: 40 };
+    const shaft = () => {
       ctx.moveTo(base.x - w, base.y);
       ctx.lineTo(top.x - w * 0.7, top.y);
       ctx.lineTo(top.x + w * 0.7, top.y);
       ctx.lineTo(base.x + w, base.y);
       ctx.closePath();
-    }, col(c), { ink: iw });
+    };
+    const along = (t) => ({ x: base.x + (top.x - base.x) * t, y: base.y + (top.y - base.y) * t, w: w * (1 - 0.3 * t) });
+    if (body === "lattice") {
+      const lw = Math.max(1, s * 0.035);
+      [-1, 1].forEach((k) => stroke(ctx, () => {
+        ctx.moveTo(base.x + k * w * 1.3, base.y);
+        ctx.lineTo(top.x + k * w * 0.5, top.y);
+      }, INK, lw + iw * 0.6));
+      stroke(ctx, () => {
+        for (let i = 0; i < 9; i++) {
+          const a = along(i / 9);
+          const b = along((i + 1) / 9);
+          const ka = 1.3 - (i / 9) * 0.8;
+          const kb = 1.3 - ((i + 1) / 9) * 0.8;
+          ctx.moveTo(a.x - w * ka, a.y);
+          ctx.lineTo(b.x + w * kb, b.y);
+          ctx.moveTo(a.x + w * ka, a.y);
+          ctx.lineTo(b.x - w * kb, b.y);
+        }
+      }, col(c), Math.max(0.8, lw * 0.8));
+    } else {
+      paint(ctx, shaft, col(c), { ink: iw });
+      if (body === "holes" && s > 6) {
+        ctx.fillStyle = "rgba(40, 30, 60, 0.75)";
+        for (let t = 0.1; t < 0.9; t += 0.09) {
+          const p = along(t);
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, p.w * 0.32, Math.max(0.8, s * 0.06), 0, 0, TAU);
+          ctx.fill();
+        }
+      } else if ((body === "wood" || body === "crossbar") && s > 6) {
+        stroke(ctx, () => {
+          [-0.35, 0.2].forEach((k) => {
+            ctx.moveTo(base.x + w * k, base.y);
+            ctx.lineTo(top.x + w * k * 0.7, top.y);
+          });
+        }, col(wood, -16, 0, 0.7), Math.max(0.6, s * 0.02));
+      } else if (body === "tube") {
+        stroke(ctx, () => {
+          ctx.moveTo(base.x - w * 0.4, base.y);
+          ctx.lineTo(top.x - w * 0.3, top.y);
+        }, "rgba(255, 255, 255, 0.7)", Math.max(0.8, w * 0.35));
+      }
+    }
     const arm = s * 0.9;
     const armY = top.y + s * 0.5;
-    paint(ctx, () => ctx.rect(top.x - arm, armY - s * 0.07, arm * 2, Math.max(1, s * 0.14)), col(c, -12), { ink: iw * 0.8 });
-    [-0.8, 0.8].forEach((k) => {
-      paint(ctx, () => ctx.rect(top.x + arm * k - s * 0.05, armY - s * 0.25, s * 0.1, s * 0.2), "#fff6fb", { ink: iw * 0.6 });
+    const count = (shown && profile.insulators) || 2;
+    const armAt = (y, span) => paint(ctx, () => ctx.rect(top.x - span, y - s * 0.07, span * 2, Math.max(1, s * 0.14)), col(c, -12), { ink: iw * 0.8 });
+    armAt(armY, arm);
+    if (body === "crossbar") armAt(armY + s * 0.8, arm * 0.75);
+    const slots = count === 1 ? [0] : Array.from({ length: count }, (_, i) => -0.8 + (1.6 * i) / (count - 1));
+    slots.forEach((k) => {
+      const ix = top.x + arm * k;
+      paint(ctx, () => ctx.rect(ix - s * 0.05, armY - s * 0.25, s * 0.1, s * 0.2), "#fff6fb", { ink: iw * 0.6 });
+      if (s > 14) {
+        stroke(ctx, () => {
+          for (let r = 0; r < 2; r++) {
+            ctx.moveTo(ix - s * 0.07, armY - s * (0.11 + r * 0.07));
+            ctx.lineTo(ix + s * 0.07, armY - s * (0.11 + r * 0.07));
+          }
+        }, INK, Math.max(0.6, iw * 0.5));
+      }
     });
     if (shown) {
       const t = profile.poleTop;
@@ -1726,9 +1789,11 @@
         }, INK, Math.max(1.2, iw * 1.3));
       }
     }
+    const first = slots[0];
+    const last = slots[slots.length - 1];
     return [
-      { x: top.x - arm * 0.8, y: armY - s * 0.25 },
-      { x: top.x + arm * 0.8, y: armY - s * 0.25 },
+      { x: top.x + arm * first, y: armY - s * 0.25 },
+      { x: top.x + arm * last, y: armY - s * (count === 1 ? 0.6 : 0.25) },
     ];
   }
 
@@ -1863,28 +1928,34 @@
     const n = 12;
     const span = Math.abs(b.x - a.x) / n;
     const size = Math.max(3, span * 0.7);
-    const palette = [profile.accentColor, shade(profile.accentColor, 18), { h: (profile.accentColor.h + 180) % 360, s: 70, l: 70 }];
+    const palette = profile.flag
+      ? profile.flag.colors
+      : [col(profile.accentColor), col(shade(profile.accentColor, 18)), col({ h: (profile.accentColor.h + 180) % 360, s: 70, l: 70 })];
     for (let i = 1; i < n; i++) {
       const p = at(i / n);
       const c = palette[i % palette.length];
+      if (style === "flags" && profile.flag && i % 4 === 2 && size > 8) {
+        G.props.drawFlag(ctx, p.x - size * 0.6, p.y, size * 1.2, size * 0.8, profile.flag, profile.provinceFlag, 0.6, Math.max(0.6, U * 0.8));
+        continue;
+      }
       if (style === "flags") {
         paint(ctx, () => {
           ctx.moveTo(p.x - size / 2, p.y);
           ctx.lineTo(p.x + size / 2, p.y);
           ctx.lineTo(p.x, p.y + size * 1.1);
           ctx.closePath();
-        }, col(c), { ink: Math.max(0.6, U * 0.8) });
+        }, c, { ink: Math.max(0.6, U * 0.8) });
       } else if (style === "lanterns") {
         ctx.save();
-        ctx.shadowColor = col(c, 20);
+        ctx.shadowColor = c;
         ctx.shadowBlur = size;
-        paint(ctx, () => ctx.ellipse(p.x, p.y + size * 0.6, size * 0.45, size * 0.6, 0, 0, TAU), col(c, 12), { ink: Math.max(0.6, U * 0.8) });
+        paint(ctx, () => ctx.ellipse(p.x, p.y + size * 0.6, size * 0.45, size * 0.6, 0, 0, TAU), c, { ink: Math.max(0.6, U * 0.8) });
         ctx.restore();
       } else {
         stroke(ctx, () => {
           ctx.moveTo(p.x, p.y);
           ctx.bezierCurveTo(p.x + size * 0.4, p.y + size * 0.6, p.x - size * 0.4, p.y + size * 1.1, p.x + size * 0.2, p.y + size * 1.8);
-        }, col(c), Math.max(1, size * 0.28));
+        }, c, Math.max(1, size * 0.28));
       }
     }
     void rand;
@@ -1938,7 +2009,7 @@
     paint(ctx, () => ctx.rect(x - w / 2, y - s * 0.95, w, s * 0.22), col(color, 8), { ink: iw });
   }
 
-  function hoverCar(ctx, x, y, s, color, U, rand) {
+  function hoverCar(ctx, x, y, s, color, U, rand, plateSpec) {
     const w = s * 1.9;
     const h = s * 0.85;
     const lift = s * 0.38;
@@ -1967,6 +2038,7 @@
       paint(ctx, () => ctx.ellipse(x + k * w * 0.34, by - h * 0.5, w * 0.08, h * 0.1, 0, 0, TAU), "#ff5a8a", { ink: iw * 0.7 });
       ctx.restore();
     });
+    if (plateSpec && G.props.plate) G.props.plate(ctx, x, by - h * 0.3, w * 0.3, plateSpec, U);
     void rand;
   }
 
@@ -2124,4 +2196,4 @@
     glowCaps,
     skyJelly,
   };
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

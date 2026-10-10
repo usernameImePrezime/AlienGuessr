@@ -12,7 +12,8 @@
     great: "assets/sfx/great.ogg",
     meh: "assets/sfx/meh.ogg",
   };
-  const STORE = "alienGuessr.audio";
+  const STORE = "probeDrop.audio";
+  const OLD_STORE = "alienGuessr.audio";
   const TRACK_MS = 150000;
   const FADE_MS = 1800;
   const MUSIC_LEVEL = 0.55;
@@ -28,7 +29,7 @@
 
   function loadState() {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORE) || "{}");
+      const saved = JSON.parse(localStorage.getItem(STORE) || localStorage.getItem(OLD_STORE) || "{}");
       return {
         muted: saved.muted === true,
         volume: typeof saved.volume === "number" ? Math.max(0, Math.min(1, saved.volume)) : 0.5,
@@ -255,4 +256,4 @@
   }
 
   G.audio = { start, toggle, setVolume, sfx, status, state, tracks: TRACKS };
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

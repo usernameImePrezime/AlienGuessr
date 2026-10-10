@@ -1,5 +1,5 @@
-Alien Guessr asset credits
-==========================
+Probe Drop asset credits
+========================
 
 Every file in assets/ is listed here with its author, source, and license.
 Nothing here is used without permission.

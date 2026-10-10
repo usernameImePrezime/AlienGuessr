@@ -39,4 +39,4 @@
   G.hashSeed = hashSeed;
   G.mulberry32 = mulberry32;
   G.randomSeed = randomSeed;
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});

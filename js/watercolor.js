@@ -319,15 +319,15 @@
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
     ctx.fillStyle = patternFor(ctx, "paper");
-    ctx.globalAlpha = 0.6;
+    ctx.globalAlpha = 0.4;
     ctx.fillRect(0, 0, W, H);
     const m = patternFor(ctx, "mottle");
     if (m.setTransform) m.setTransform(new DOMMatrix([3, 0, 0, 3, rng() * 512, rng() * 512]));
     ctx.fillStyle = m;
-    ctx.globalAlpha = 0.16;
+    ctx.globalAlpha = 0.1;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
-    const drops = 14 + Math.floor(rng() * 14);
+    const drops = 6 + Math.floor(rng() * 8);
     for (let i = 0; i < drops; i++) {
       const x = rng() * W;
       const y = rng() * H;
@@ -356,4 +356,4 @@
   }
 
   G.wc = { begin, end, active, setLine, withLine, rand, line, wash, texture, glaze, paint, bloom, finish, paper, patternFor, INK, PEN };
-})(window.AlienGuessr = window.AlienGuessr || {});
+})(window.ProbeDrop = window.ProbeDrop || {});
