@@ -1629,6 +1629,13 @@
   }
 
   const AD_WORDS = ["ZORP", "BLIP", "GLORB", "SNAX", "WUBBO", "FIZZ", "MOOP", "YUMZ", "GOOP", "ZAP!"];
+  let photoHits = [];
+
+  function noteHit(cam, x, y, w, h, kind, spec) {
+    if (w < 4 || h < 4) return;
+    if (x + w < 0 || y + h < 0 || x > cam.W || y > cam.H) return;
+    photoHits.push({ x, y, w, h, kind, spec });
+  }
 
   function plateFor(profile, rng) {
     if (!profile.plate) return null;
@@ -1684,7 +1691,10 @@
         const side = t < 2 ? own : -own;
         const x = road.x(z) + side * (halfW + 0.75);
         if (L.take(x, z, 0.3, 0.35)) {
-          at(z, x, 0, (ctx, p) => P.kmMarker(ctx, p.x, p.y, p.s, profile.kmMarker, number, U));
+          at(z, x, 0, (ctx, p) => {
+            P.kmMarker(ctx, p.x, p.y, p.s, profile.kmMarker, number, U);
+            noteHit(cam, p.x - p.s * 0.4, p.y - p.s * 1.4, p.s * 0.8, p.s * 1.4, "km", { style: profile.kmMarker, number });
+          });
           break;
         }
       }
@@ -1695,7 +1705,12 @@
         const z = 7 + rng() * 9;
         const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + (city ? 0.6 : 0.9));
         if (L.take(x, z, 0.5, 0.4)) {
-          queue.push({ z, draw: (ctx) => P.sign(ctx, cam, x, z, profile, U) });
+          queue.push({ z, draw: (ctx) => {
+            P.sign(ctx, cam, x, z, profile, U);
+            const top = cam.p(x, z, 2.5);
+            const r = cam.p(x, z, 0).s * 0.7;
+            noteHit(cam, top.x - r, top.y - r, r * 2, r * 2, "sign", profile);
+          } });
           break;
         }
       }
@@ -1717,7 +1732,12 @@
         const side = rng() < 0.5 ? -1 : 1;
         const x = road.x(z) + side * (halfW + (city ? 1.4 : 2.8 + rng() * 2));
         if (L.take(x, z, city ? 0.9 : 1.8, 0.6)) {
-          at(z, x, 0, (ctx, p) => P.billboard(ctx, p.x, p.y, p.s, spec, U));
+          at(z, x, 0, (ctx, p) => {
+            P.billboard(ctx, p.x, p.y, p.s, spec, U);
+            const bw = p.s * (spec.small ? 1.6 : 3.3);
+            const boardTop = p.y - p.s * (spec.small ? 1.6 : 3.9);
+            noteHit(cam, p.x - bw / 2, boardTop, bw, p.y - boardTop, "billboard", spec);
+          });
           break;
         }
       }
@@ -1909,6 +1929,11 @@
     queue.push({ z, draw: (ctx) => {
       const p = cam.p(x, z, 0);
       P.hoverCar(ctx, p.x, p.y, p.s, color, U, rng, plateSpec);
+      if (!plateSpec) return;
+      const pw = p.s * 1.9 * 0.34;
+      const ph = pw * 0.42;
+      const cy = p.y - p.s * 0.38 - p.s * 0.85 * 0.3;
+      noteHit(cam, p.x - pw / 2, cy - ph / 2, pw, ph, "plate", plateSpec);
     } });
   }
 
@@ -2136,7 +2161,36 @@
     ctx.fillRect(0, 0, W, H);
   }
 
+  function drawLoupe(ctx, W, H, hit) {
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#fffaf2");
+    g.addColorStop(1, "#ffe7c4");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    const U = H / 360;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    G.wc.begin(1, U);
+    G.wc.setLine("pen");
+    try {
+      if (hit.kind === "billboard") P.billboard(ctx, W * 0.5, H * 0.96, H * 0.26, hit.spec, U);
+      else if (hit.kind === "km") P.kmMarker(ctx, W * 0.5, H * 0.94, H * 0.62, hit.spec.style, hit.spec.number, U * 1.4);
+      else if (hit.kind === "plate") P.plate(ctx, W * 0.5, H * 0.5, W * 0.72, hit.spec, U * 2);
+      else if (hit.kind === "sign") {
+        const S = H / 4.2;
+        const view = { p: (x, z, y) => ({ x: W * 0.5 + x * S, y: H * 0.92 - (y || 0) * S, s: S }) };
+        P.sign(ctx, view, 0, 0, hit.spec, U);
+      }
+    } finally {
+      G.wc.end();
+      ctx.restore();
+    }
+  }
+
   function drawScene(ctx, W, H, opts) {
+    photoHits = [];
     const { planet, location: loc, profile, rng } = opts;
     const U = H / 720;
     let biome = G.biomeAt(planet.terrain, loc.x, loc.y);
@@ -2161,6 +2215,7 @@
     } finally {
       G.wc.end();
     }
+    G.photoHits = photoHits;
   }
 
   let depthLayer = null;
@@ -2264,6 +2319,7 @@
   }
 
   G.drawScene = drawScene;
+  G.drawLoupe = drawLoupe;
   G.sceneKit = { camera, palette, drawSky, drawStars, drawSkyEvent, drawLandmarks, wallPalette, plateFor, metaPlant };
   G.paperTexture = paperTexture;
 })(window.ProbeDrop = window.ProbeDrop || {});

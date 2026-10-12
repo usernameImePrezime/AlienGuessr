@@ -388,6 +388,7 @@
       p.plate = tier >= 1 ? plates[i] : null;
       p.probeCar = tier >= 1 ? { antenna: antennas[i], tape: tapes[i] } : null;
       p.domain = tier >= 1 ? country.domain : null;
+      p.domainScope = tier >= 1 ? "country" : null;
       p.poleBody = tier >= 2 ? poles[i] : null;
       p.insulators = tier >= 2 ? insulators[i] : null;
       p.guardrail = tier >= 2 ? rails[i] : null;
@@ -395,6 +396,34 @@
       p.curb = tier >= 2 ? curbs[i] : null;
       p.phoneDigit = tier >= 2 ? country.digit : null;
     });
+    if (tier === 1 && countries.length > 1) {
+      const order = shuffled(rand, countries.map((country) => country.id));
+      for (let i = 0; i + 1 < order.length; i += 2) {
+        const shared = countries[order[i]].domain;
+        [order[i], order[i + 1]].forEach((id) => {
+          countries[id].domain = shared;
+          profiles[id].domain = shared;
+          profiles[id].domainScope = "pair";
+        });
+      }
+      if (order.length % 2 === 1) {
+        const last = order[order.length - 1];
+        const host = order[0];
+        countries[last].domain = countries[host].domain;
+        profiles[last].domain = countries[host].domain;
+        profiles[last].domainScope = "pair";
+      }
+    } else if (tier >= 2) {
+      continents.forEach((continent) => {
+        const shared = G.METAS.domainFor(continent.name, domains);
+        continent.domain = shared;
+        continent.countryIds.forEach((id) => {
+          countries[id].domain = shared;
+          profiles[id].domain = shared;
+          profiles[id].domainScope = "continent";
+        });
+      });
+    }
   }
 
   function tryGenerate(seed, difficulty, terrain) {

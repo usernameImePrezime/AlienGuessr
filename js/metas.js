@@ -237,6 +237,8 @@
       case "probeCar":
         return `${word("antenna", p.probeCar.antenna)}, ${word("tape", p.probeCar.tape)}`;
       case "domain":
+        if (p.domainScope === "continent") return `${p.domain} on every country of this continent`;
+        if (p.domainScope === "pair") return `${p.domain}, shared with one other country`;
         return p.domain;
       case "pole":
         return `${word("poleBody", p.poleBody)}, ${p.insulators} insulator${p.insulators === 1 ? "" : "s"}`;
@@ -259,6 +261,110 @@
     }
   }
 
+  function fingerprint(key, profile) {
+    const p = profile || {};
+    switch (key) {
+      case "aliens":
+        return (p.alienColors || []).slice().sort().join("+");
+      case "sky":
+        return (p.skyGradient || []).map((c) => `${Math.round(c.h)}/${Math.round(c.s)}/${Math.round(c.l)}`).join(" ");
+      case "skyEvent":
+        return p.skyEvent || "";
+      case "driving":
+        return p.drivingSide || "";
+      case "sun":
+        return p.hemisphere || "";
+      case "species": {
+        const s = p.alienSpecies || {};
+        return `${s.body}|${s.arm}|${s.leg}|${s.detail}|${s.eye}|${s.eyes}|${s.mouth}|${p.alienHeight}`;
+      }
+      case "vegetation":
+        return p.vegetation || "";
+      case "roof":
+        return `${p.roofShape}|${p.windowStyle}|${p.roofColor ? Math.round(p.roofColor.h) : ""}`;
+      case "flag":
+        return p.flag ? `${p.flag.layout}|${p.flag.colors.join(",")}` : "";
+      case "sign":
+        return `${p.signShape}|${p.signGlyph}`;
+      case "terrain":
+        return p.terrain || "";
+      case "stars":
+        return p.starPattern || "";
+      case "fence":
+        return p.fence || "";
+      case "soil":
+        return p.soil ? `${p.soil}|${p.dryness}` : "";
+      case "bollard":
+        return p.bollard ? `${p.bollard.shape}|${p.bollard.reflector}` : "";
+      case "chevron":
+        return p.chevron || "";
+      case "lines":
+        return p.linePattern || "";
+      case "plate":
+        return p.plate || "";
+      case "probeCar":
+        return p.probeCar ? `${p.probeCar.antenna}|${p.probeCar.tape}` : "";
+      case "domain":
+        return p.domainScope === "country" ? (p.domain || "") : "";
+      case "pole":
+        return p.poleBody ? `${p.poleBody}|${p.insulators}` : "";
+      case "phone":
+        return p.phoneDigit === null || p.phoneDigit === undefined ? "" : String(p.phoneDigit);
+      case "guardrail":
+        return p.guardrail || "";
+      case "kmMarker":
+        return p.kmMarker || "";
+      case "curb":
+        return p.curb || "";
+      case "areaCode":
+        return p.areaCode ? String(p.areaCode) : "";
+      case "plateLetter":
+        return p.plateLetter || "";
+      case "provinceFlag":
+        return p.provinceFlag ? `${p.provinceFlag.emblem}|${p.provinceFlag.color}` : "";
+      default:
+        return "";
+    }
+  }
+
+  function tell(planet, truth, guess) {
+    if (!truth || !truth.province || !truth.province.profile) return "";
+    const wrongCountry = !guess || guess.sea || !guess.country || guess.country.id !== truth.country.id;
+    const wrongProvince = !wrongCountry && guess.province.id !== truth.province.id;
+    if (!wrongCountry && !wrongProvince) return "";
+    const profile = truth.province.profile;
+    const entries = CATALOG.filter((entry) => enabled(entry, profile.difficulty) && (wrongCountry ? entry.level !== "province" : entry.level === "province"));
+    const units = wrongCountry
+      ? planet.countries.map((country) => ({ name: country.name, profile: country.profile }))
+      : truth.country.provinceIds.map((id) => {
+        const province = planet.regions[id];
+        return { name: province.name, profile: province.profile };
+      });
+    const ranked = [];
+    entries.forEach((entry) => {
+      const value = fingerprint(entry.key, profile);
+      if (!value) return;
+      const names = [];
+      units.forEach((unit) => {
+        if (fingerprint(entry.key, unit.profile) === value && names.indexOf(unit.name) < 0) names.push(unit.name);
+      });
+      if (names.length === 1 || names.length === 2) ranked.push({ entry, names, tier: TIERS[entry.tier] });
+    });
+    if (!ranked.length) return "";
+    const fewest = ranked.reduce((best, row) => Math.min(best, row.names.length), 2);
+    const atFewest = ranked.filter((row) => row.names.length === fewest);
+    const hardest = atFewest.reduce((best, row) => Math.max(best, row.tier), 0);
+    const options = atFewest.filter((row) => row.tier === hardest);
+    const rng = G.mulberry32(G.hashSeed(`${planet.seed}|tell|${truth.province.id}|${wrongCountry ? "c" : "p"}`));
+    const picked = options[Math.floor(rng() * options.length)];
+    const said = describe(picked.entry.key, profile, truth);
+    const line = said.charAt(0).toUpperCase() + said.slice(1);
+    const where = picked.names.length === 1
+      ? `only in ${picked.names[0]}`
+      : `in ${picked.names[0]} and ${picked.names[1]}`;
+    return `${line} — ${where}.`;
+  }
+
   G.METAS = {
     TIERS,
     POOLS,
@@ -277,5 +383,6 @@
     describe,
     word,
     hueName,
+    tell,
   };
 })(window.ProbeDrop = window.ProbeDrop || {});

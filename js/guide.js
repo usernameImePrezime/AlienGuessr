@@ -391,7 +391,10 @@
   };
 
   function entriesFor(difficulty, level, profile) {
-    return G.METAS.metasFor(difficulty, level).filter((entry) => ART[entry.key] && (!HAS[entry.key] || HAS[entry.key](profile)));
+    return G.METAS.metasFor(difficulty).filter((entry) => {
+      const entryLevel = entry.key === "domain" && profile.domainScope === "continent" ? "continent" : entry.level;
+      return entryLevel === level && ART[entry.key] && (!HAS[entry.key] || HAS[entry.key](profile));
+    });
   }
 
   function drawCard(canvas, entry, info) {
@@ -417,12 +420,17 @@
   const $ = (id) => document.getElementById(id);
   const state = { key: null, level: "continent", info: null, collapsed: false };
 
-  function levelNote(level, difficulty, place) {
+  function levelNote(level, difficulty, place, profile) {
     if (level === "continent") {
       const base = `${place.continent.name} · ${place.continent.hemisphere === "south" ? "southern" : "northern"} hemisphere`;
+      if (profile.domainScope === "continent") return `${base}. The web domain ${profile.domain} is on every country here.`;
       return difficulty === "easy" ? `${base}. Only one continent on Easy, so the sky and alien color change per country.` : base;
     }
-    if (level === "country") return `${place.country.name} · phone digit, domain and road furniture belong to the country`;
+    if (level === "country") {
+      if (profile.domainScope === "pair") return `${place.country.name} · the web domain is shared with one other country.`;
+      if (profile.domainScope === "continent") return `${place.country.name} · poles, phone digits and road furniture. The web domain belongs to the continent.`;
+      return `${place.country.name} · phone digit and road furniture belong to the country`;
+    }
     return `${place.province.name}, a province of ${place.country.name}`;
   }
 
@@ -431,7 +439,7 @@
     const list = $("guide-cards");
     list.replaceChildren();
     const entries = entriesFor(info.difficulty, state.level, info.profile);
-    $("guide-note").textContent = levelNote(state.level, info.difficulty, info.place);
+    $("guide-note").textContent = levelNote(state.level, info.difficulty, info.place, info.profile);
     if (!entries.length) {
       const empty = document.createElement("p");
       empty.className = "guide-empty";

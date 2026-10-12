@@ -430,6 +430,17 @@ button {
   flex-wrap: wrap;
 }
 
+.daily-link {
+  justify-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .loading {
   font-family: var(--display);
   letter-spacing: 0.05em;
@@ -1033,6 +1044,16 @@ button {
   line-height: 1.35;
 }
 
+.result-tell {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 229, 107, 0.14);
+  color: var(--yellow);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
 .result-bonus {
   justify-self: center;
   margin: 0;
@@ -1246,6 +1267,111 @@ button {
   color: var(--ink);
   font-weight: 700;
   box-shadow: var(--pop);
+}
+
+#photo.can-read {
+  cursor: zoom-in;
+}
+
+.photo-loupe {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 6;
+  width: min(560px, 88%);
+  transform: translate(-50%, -50%);
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fffaf2;
+  color: var(--ink);
+  box-shadow: 6px 8px 0 var(--ink);
+}
+
+.photo-loupe canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.loupe-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 3px solid var(--ink);
+  background: #fff3df;
+  font-weight: 700;
+}
+
+.score-card {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 8px;
+  padding: 18px 16px 20px;
+  overflow: auto;
+  text-align: center;
+  background: rgba(24, 14, 54, 0.94);
+  animation: guide-in 380ms cubic-bezier(0.25, 1.3, 0.5, 1);
+}
+
+.score-card h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 28px;
+  color: var(--yellow);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+.score-total {
+  margin: 0;
+  font-size: 16px;
+}
+
+.score-total strong {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 42px;
+  color: var(--pink);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+
+.score-meta {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.score-rounds {
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.score-rounds li {
+  font-weight: 600;
+}
+
+.score-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.score-actions .blob {
+  font-size: 16px;
+  padding: 8px 16px;
 }
 
 @media (max-width: 1440px) {

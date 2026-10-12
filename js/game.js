@@ -16,9 +16,18 @@
       pin: null,
       lastResult: null,
       roundScores: [],
+      results: [],
+      roundLimit: mode === "drop" ? 5 : 0,
     };
     match.rounds.push(G.pickLocation(planet, rng));
     return match;
+  }
+
+  function dailySeed(now) {
+    const date = now || new Date();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    return `day-${date.getUTCFullYear()}-${month}-${day}`;
   }
 
   function currentRound(match) {
@@ -56,11 +65,20 @@
     match.roundScores.push(points);
     match.bestRound = Math.max(match.bestRound, points);
     match.lastResult = { dist, base, bonus, points, guess, truth, total: match.totalScore };
+    match.results.push({
+      points,
+      country: truth.country.name,
+      province: truth.province.name,
+    });
     match.phase = "revealed";
   }
 
   function advance(match) {
     if (match.phase !== "revealed") return;
+    if (match.roundLimit && match.roundIndex + 1 >= match.roundLimit) {
+      match.phase = "done";
+      return;
+    }
     match.rounds.push(G.pickLocation(match.planet, match.rng));
     match.roundIndex += 1;
     match.phase = "guessing";
@@ -69,6 +87,7 @@
   }
 
   G.createMatch = createMatch;
+  G.dailySeed = dailySeed;
   G.currentRound = currentRound;
   G.currentRegion = currentRegion;
   G.photoKey = photoKey;

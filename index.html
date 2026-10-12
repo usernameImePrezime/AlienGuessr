@@ -42,8 +42,10 @@
 
         <div class="action-row">
           <button type="button" id="play-btn" class="primary blob">Beam me down</button>
+          <button type="button" id="drop-btn" class="secondary blob">Five drops</button>
           <button type="button" id="study-btn" class="secondary blob">Study mode</button>
         </div>
+        <button type="button" id="daily-btn" class="daily-link">Today's five drops</button>
         <p id="loading-note" class="quiet loading" hidden>Folding space-time...</p>
         <div class="sound-ctl start-sound">
           <button type="button" class="chip music-toggle" title="Toggle music">Music on</button>
@@ -117,6 +119,24 @@
               <div id="guide-cards" class="guide-cards"></div>
             </section>
             <button type="button" id="guide-open" class="chip guide-open" hidden>Open Field Guide</button>
+            <div id="photo-loupe" class="photo-loupe" hidden>
+              <canvas id="loupe-canvas" width="640" height="360"></canvas>
+              <div class="loupe-bar">
+                <span id="loupe-caption"></span>
+                <button type="button" id="loupe-close" class="chip">Close</button>
+              </div>
+            </div>
+            <section id="score-card" class="score-card" hidden>
+              <p class="guide-kicker">Five drops</p>
+              <h2 id="score-heading">Planet complete</h2>
+              <p class="score-total"><strong id="score-total">0</strong> points</p>
+              <p id="score-meta" class="score-meta"></p>
+              <div class="score-actions">
+                <button type="button" id="copy-challenge" class="primary blob">Copy challenge link</button>
+                <button type="button" id="score-again" class="secondary blob">Same planet again</button>
+              </div>
+              <ol id="score-rounds" class="score-rounds"></ol>
+            </section>
           </div>
         </div>
 
@@ -170,7 +190,7 @@
 
           <div id="map-bar" class="guess-card">
             <button type="button" id="confirm-btn" class="primary blob wide" disabled>Lock in guess</button>
-            <p class="quiet keys">Enter also locks it in.</p>
+            <p class="quiet keys">Enter locks it in. Click a sign, plate or marker in the photo to read it.</p>
           </div>
 
           <div id="result-banner" class="result-card" hidden>
@@ -178,6 +198,7 @@
             <p class="result-points"><strong id="round-points">0</strong> points</p>
             <p id="result-place" class="result-place"></p>
             <p id="result-bonus" class="result-bonus" hidden></p>
+            <p id="result-tell" class="result-tell" hidden></p>
             <p id="distance-label" class="quiet"></p>
             <button type="button" id="next-btn" class="primary blob wide">Next location</button>
           </div>
