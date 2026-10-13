@@ -80,7 +80,7 @@
       if (p.z > pts[pts.length - 1].z + 0.5) pts.push(p);
     });
     if (pts.length < 2) pts.push({ z: 100, x: 0 });
-    const amp = kind === "city" ? 0 : (1.2 + rng() * 3.2) * (rng() < 0.5 ? -1 : 1);
+    const amp = kind === "city" ? 0 : (0.18 + rng() * 0.32) * (rng() < 0.5 ? -1 : 1);
     const wave = 45 + rng() * 70;
     const phase = rng() * TAU;
     const last = pts[pts.length - 1];
@@ -190,60 +190,9 @@
     glow.addColorStop(1, col(pal.glow, 10, 0, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, y0 + 4);
-    for (let i = 0; i < 5; i++) {
-      const x = rng() * W;
-      const y = rng() * y0;
-      const r = (100 + rng() * 200) * U;
-      const tint = [pal.sky0, pal.sky1, profile.accentColor, pal.glow][i % 4];
-      const bloom = ctx.createRadialGradient(x, y, 0, x, y, r);
-      bloom.addColorStop(0, col(tint, 8, 0, 0.22));
-      bloom.addColorStop(0.7, col(tint, 8, 0, 0.08));
-      bloom.addColorStop(1, col(tint, 8, 0, 0));
-      ctx.fillStyle = bloom;
-      ctx.beginPath();
-      ctx.ellipse(x, y, r, r * (0.4 + rng() * 0.4), (rng() - 0.5) * 0.6, 0, TAU);
-      ctx.fill();
-    }
-    for (let i = 0; i < 2; i++) {
-      const tint = [profile.accentColor, pal.glow][i];
-      const y = y0 * (0.2 + i * 0.4 + rng() * 0.1);
-      const span = (50 + rng() * 60) * U;
-      const band = ctx.createLinearGradient(0, y - span * 0.5, 0, y + span * 0.5);
-      band.addColorStop(0, col(tint, 10, 8, 0));
-      band.addColorStop(0.5, col(tint, 10, 8, 0.16));
-      band.addColorStop(1, col(tint, 10, 8, 0));
-      G.wc.wash(ctx, () => ctx.rect(0, y - span * 0.5, W, span), band, { soft: true, mottle: 0.2 });
-    }
-    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.22, 2.4);
-    ctx.lineCap = "round";
-    for (let i = 0; i < 3; i++) {
-      const y = y0 * (0.1 + rng() * 0.75);
-      const x = rng() * W * 0.7;
-      ctx.strokeStyle = col(mixC(pal.sky1, { h: 0, s: 0, l: 100 }, 0.5), 0, 0, 0.22);
-      ctx.lineWidth = (6 + rng() * 14) * U;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.bezierCurveTo(x + W * 0.1, y - 12 * U, x + W * 0.22, y + 10 * U, x + W * (0.3 + rng() * 0.2), y - 4 * U);
-      ctx.stroke();
-    }
-    if (rng() < 0.4) {
-      const tone = col(mixC(pal.sky1, pal.sky0, 0.5), -10, -10, 0.45);
-      const n = 1 + Math.floor(rng() * 3);
-      for (let i = 0; i < n; i++) {
-        const x = W * (0.1 + rng() * 0.8);
-        const y = y0 * (0.35 + rng() * 0.35);
-        const w = (24 + rng() * 40) * U;
-        ctx.fillStyle = tone;
-        ctx.beginPath();
-        ctx.moveTo(x - w, y);
-        ctx.quadraticCurveTo(x - w * 0.9, y - w * 0.28, x - w * 0.4, y - w * 0.3);
-        ctx.quadraticCurveTo(x, y - w * 0.55, x + w * 0.45, y - w * 0.3);
-        ctx.quadraticCurveTo(x + w, y - w * 0.25, x + w, y);
-        ctx.quadraticCurveTo(x + w * 0.3, y + w * 0.15, x + w * 0.05, y + w * 0.7);
-        ctx.quadraticCurveTo(x - w * 0.3, y + w * 0.2, x - w, y);
-        ctx.fill();
-      }
-    }
+    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.18, 2.2);
+    void profile;
+    void rng;
   }
 
   function crescentPath(ctx, x, y, r, d, rot) {
@@ -302,79 +251,37 @@
   }
 
   function drawClouds(ctx, cam, pal, rng, U) {
-    const n = 2 + Math.floor(rng() * 4);
-    const color = mixC(pal.sky1, { h: 330, s: 60, l: 98 }, 0.78);
+    const n = 2 + Math.floor(rng() * 2);
+    const color = mixC(pal.sky1, { h: 220, s: 28, l: 96 }, 0.72);
     for (let i = 0; i < n; i++) {
-      const cx = rng() * cam.W;
-      const cy = cam.y0 * (0.12 + rng() * 0.55);
-      const size = (26 + rng() * 46) * U * (cy / cam.y0 + 0.4);
-      const blobs = [];
-      const parts = 4 + Math.floor(rng() * 4);
-      for (let k = 0; k < parts; k++) {
-        const t = k / (parts - 1) - 0.5;
-        blobs.push({
-          x: cx + t * size * 3.2,
-          y: cy - Math.cos(t * Math.PI) * size * 0.55 + rng() * size * 0.2,
-          r: size * (0.5 + Math.cos(t * Math.PI) * 0.45 + rng() * 0.15),
-        });
-      }
-      flatCloud(ctx, blobs, cy + size * 0.32, color, 1.4 * U);
+      const cx = cam.W * (0.14 + rng() * 0.72);
+      const cy = cam.y0 * (0.16 + rng() * 0.38);
+      const w = (110 + rng() * 80) * U * (0.62 + cy / cam.y0);
+      const h = w * 0.34;
+      cloudShape(ctx, cx, cy, w, h, color, 1.2 * U);
     }
   }
 
-  function flatCloud(ctx, blobs, baseY, color, iw) {
-    const l = blobs[0].x;
-    const r = blobs[blobs.length - 1].x;
-    const shape = (grow) => {
+  function cloudShape(ctx, cx, cy, w, h, color, iw) {
+    ctx.fillStyle = col(color, -22, -12, 0.22);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + h * 0.38, w * 0.42, h * 0.14, 0, 0, TAU);
+    ctx.fill();
+    const path = () => {
       ctx.beginPath();
-      blobs.forEach((b) => {
-        ctx.moveTo(b.x + b.r + grow, b.y);
-        ctx.arc(b.x, b.y, b.r + grow, 0, TAU);
-      });
-      ctx.rect(l, baseY - blobs[0].r, r - l, blobs[0].r);
+      ctx.moveTo(cx - w * 0.46, cy + h * 0.18);
+      ctx.quadraticCurveTo(cx - w * 0.5, cy - h * 0.05, cx - w * 0.26, cy - h * 0.16);
+      ctx.quadraticCurveTo(cx - w * 0.18, cy - h * 0.62, cx, cy - h * 0.42);
+      ctx.quadraticCurveTo(cx + w * 0.16, cy - h * 0.7, cx + w * 0.28, cy - h * 0.2);
+      ctx.quadraticCurveTo(cx + w * 0.5, cy - h * 0.08, cx + w * 0.46, cy + h * 0.16);
+      ctx.quadraticCurveTo(cx, cy + h * 0.34, cx - w * 0.46, cy + h * 0.18);
+      ctx.closePath();
     };
-    const top = Math.min(...blobs.map((b) => b.y - b.r)) - iw * 2;
-    const left = Math.min(...blobs.map((b) => b.x - b.r)) - iw * 2;
-    const right = Math.max(...blobs.map((b) => b.x + b.r)) + iw * 2;
-    const wc = G.wc.active();
-    ctx.save();
+    paint(ctx, path, col(color), { ink: iw, glaze: col(color, -8), edge: h * 0.12 });
+    ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
     ctx.beginPath();
-    ctx.rect(left, top, right - left, baseY + iw - top);
-    ctx.clip();
-    ctx.fillStyle = wc ? G.wc.patternFor(ctx, "graphite") : INK;
-    shape(iw);
+    ctx.ellipse(cx - w * 0.1, cy - h * 0.18, w * 0.1, h * 0.16, -0.4, 0, TAU);
     ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(left, top, right - left, baseY - top);
-    ctx.clip();
-    shape(0);
-    ctx.clip();
-    ctx.fillStyle = col(color);
-    ctx.fillRect(left, top, right - left, baseY - top);
-    const span = baseY - top;
-    if (wc) {
-      G.wc.bloom(ctx, l + (r - l) * 0.3, baseY - span * 0.45, span * 0.5, "hsl(330 90% 82%)", 0.35);
-      G.wc.bloom(ctx, l + (r - l) * 0.75, baseY - span * 0.3, span * 0.4, "hsl(200 90% 84%)", 0.3);
-      G.wc.texture(ctx, left, top, right - left, baseY - top, 0.45);
-    }
-    ctx.fillStyle = wc ? col(mixC(color, { h: 18, s: 95, l: 74 }, 0.5), -4, 10) : col(color, -10, 6);
-    ctx.beginPath();
-    ctx.moveTo(left, baseY);
-    for (let x = left; x <= right; x += span * 0.3) {
-      ctx.lineTo(x, baseY - span * (0.24 + 0.05 * Math.sin(x * 0.07)));
-    }
-    ctx.lineTo(right, baseY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-    blobs.forEach((b) => {
-      ctx.beginPath();
-      ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.35, b.r * 0.32, 0, TAU);
-      ctx.fill();
-    });
-    ctx.restore();
   }
 
   const STAR_PATTERNS = {
@@ -761,68 +668,18 @@
     ctx.beginPath();
     build();
     ctx.clip();
-    for (let i = 0; i < 22; i++) {
-      const y = cam.y0 + Math.pow(rng(), 0.7) * (cam.H - cam.y0);
-      const x = rng() * cam.W;
-      const r = (40 + rng() * 160) * U * ((y - cam.y0) / (cam.H - cam.y0) + 0.25);
-      const tint = [pal.plantA, pal.plantB, shade(pal.ground, 10), shade(pal.ground, -12)][i % 4];
-      const bloom = ctx.createRadialGradient(x, y, 0, x, y, r);
-      bloom.addColorStop(0, col(tint, 0, 0, 0.3));
-      bloom.addColorStop(1, col(tint, 0, 0, 0));
-      ctx.fillStyle = bloom;
-      ctx.beginPath();
-      ctx.ellipse(x, y, r * 1.6, r * 0.5, 0, 0, TAU);
-      ctx.fill();
-    }
-    for (let i = 0; i < 9; i++) {
-      const y = cam.y0 + Math.pow(rng(), 0.8) * (cam.H - cam.y0);
-      const x = rng() * cam.W;
-      const r = (30 + rng() * 90) * U * ((y - cam.y0) / (cam.H - cam.y0) + 0.3);
-      const tint = [pal.pop, pal.pop2, pal.plantC][i % 3];
-      G.wc.bloom(ctx, x, y, r, col(tint, 0, 0), 0.16);
-    }
-    for (let i = 0; i < 60; i++) {
-      const t = Math.pow(rng(), 1.4);
-      const y = cam.y0 + 4 * U + t * (cam.H - cam.y0);
-      const x = rng() * cam.W;
-      const r = (0.8 + t * 3.2) * U;
-      const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
-      ctx.fillStyle = col({ h: hue, s: 88, l: 70 }, 0, 0, 0.9);
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, TAU);
-      ctx.fill();
-      if (r > 2 * U) {
-        ctx.fillStyle = "rgba(255, 250, 240, 0.85)";
-        ctx.beginPath();
-        ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.35, 0, TAU);
-        ctx.fill();
-      }
-    }
+    const wash = ctx.createRadialGradient(cam.W * 0.45, cam.H * 0.92, cam.W * 0.05, cam.W * 0.5, cam.y0, cam.W * 0.9);
+    wash.addColorStop(0, col(shade(pal.ground, -12), 0, 0, 0.2));
+    wash.addColorStop(0.55, col(pal.plantA, 0, 0, 0.08));
+    wash.addColorStop(1, col(pal.ground, 0, 0, 0));
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, cam.y0 - 8, cam.W, cam.H);
     ctx.restore();
+    void rng;
     stroke(ctx, () => {
       ctx.moveTo(0, tops[0]);
       for (let i = 1; i < xs.length; i++) ctx.lineTo(xs[i], tops[i]);
     }, "rgba(27, 16, 51, 0.45)", 1.1 * U);
-  }
-
-  function drawHatching(ctx, cam, road, halfW, pal, rng, U, count) {
-    ctx.lineCap = "round";
-    for (let i = 0; i < count; i++) {
-      const z = 2.6 + Math.pow(rng(), 2.2) * 90;
-      const spread = (z * cam.W) / cam.f;
-      const x = cam.lane + (rng() - 0.5) * spread * 1.1;
-      if (Math.abs(x - road.x(z)) < halfW + 0.3) continue;
-      const p = cam.p(x, z, 0);
-      const len = Math.max(1.5 * U, p.s * 0.18);
-      ctx.strokeStyle = col(rng() < 0.5 ? pal.plantA : shade(pal.ground, -18), 0, 0, 0.55);
-      ctx.lineWidth = Math.max(0.6 * U, p.s * 0.025);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - len * 0.2, p.y - len);
-      ctx.moveTo(p.x + len * 0.3, p.y);
-      ctx.lineTo(p.x + len * 0.5, p.y - len * 0.8);
-      ctx.stroke();
-    }
   }
 
   function drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U) {
@@ -946,32 +803,6 @@
 
   function drawRoadDetail(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax, zs, base) {
     const city = kind === "city";
-    for (let i = 0; i < 30; i++) {
-      const x = (rng() * 2 - 1) * halfW * 0.95;
-      const w = 0.03 + rng() * 0.12;
-      const z0 = zs[0] + rng() * 18;
-      const z1 = z0 + 6 + rng() * 40;
-      const sub = zs.filter((z) => z > z0 && z < z1);
-      if (sub.length < 2) continue;
-      ctx.fillStyle = col(base, rng() < 0.5 ? -14 : 14, 0, 0.1 + rng() * 0.14);
-      ctx.beginPath();
-      strip(ctx, cam, road, sub, x, x + w);
-      ctx.fill();
-    }
-    const speck = city ? 520 : 260;
-    const specks = [new Path2D(), new Path2D()];
-    for (let i = 0; i < speck; i++) {
-      const z = 2.6 + Math.pow(rng(), 1.5) * 22;
-      const p = cam.p(road.x(z) + (rng() * 2 - 1) * halfW * 0.97, z, 0);
-      const r = Math.min(2.2 * U, Math.max(0.45 * U, p.s * (0.01 + rng() * 0.022)));
-      const path = specks[rng() < 0.5 ? 0 : 1];
-      path.moveTo(p.x + r, p.y);
-      path.ellipse(p.x, p.y, r, r * 0.65, 0, 0, TAU);
-    }
-    ctx.fillStyle = col(base, -16, 0, 0.5);
-    ctx.fill(specks[0]);
-    ctx.fillStyle = col(base, 18, 0, 0.45);
-    ctx.fill(specks[1]);
     if (city) {
       const near = zs.filter((z) => z < 60);
       ctx.fillStyle = col(base, -18, 0, 0.26);
@@ -1016,51 +847,22 @@
           }
         }, col(base, -30), Math.max(0.6, U * 0.9));
       });
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 2; i++) {
         const side = rng() < 0.5 ? -1 : 1;
         let z = 3.5 + rng() * 18;
         let x = side * (halfW - 0.1);
         const start = cam.p(road.x(z) + x, z, 0);
         stroke(ctx, () => {
           ctx.moveTo(start.x, start.y);
-          for (let k = 0; k < 5; k++) {
-            x -= side * (0.15 + rng() * 0.3);
-            z += (rng() - 0.3) * 0.6;
+          for (let k = 0; k < 4; k++) {
+            x -= side * (0.12 + rng() * 0.2);
+            z += 0.35 + rng() * 0.35;
             const p = cam.p(road.x(z) + x, z, 0);
             ctx.lineTo(p.x, p.y);
           }
         }, col(base, -24, 0, 0.8), Math.max(0.6, U * 0.9));
-        P.tuft(ctx, start.x, start.y, start.s, 0.22, pal.plantA, rng, U);
-      }
-      {
-        const z = 5 + rng() * 9;
-        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW * 1.2, z, 0);
-        const rx = p.s * (0.6 + rng() * 0.4);
-        G.wc.wash(ctx, () => flatEllipse(ctx, cam, p, z, rx), col({ h: 240, s: 20, l: 30 }, 0, 0, 0.7), { bleed: 0.6 });
-        ctx.save();
-        ctx.lineWidth = Math.max(1, rx * 0.09);
-        ctx.globalAlpha = 0.45;
-        ["#ff5fa8", "#ffd84a", "#5ff2b0", "#5fb6ff", "#b46bff"].forEach((c, k) => {
-          ctx.strokeStyle = c;
-          ctx.beginPath();
-          ctx.ellipse(p.x + rx * 0.08 * k, p.y, rx * (0.75 - k * 0.12), rx * (0.75 - k * 0.12) * (cam.ch / z), 0.2, 0, TAU);
-          ctx.stroke();
-        });
-        ctx.restore();
-        stroke(ctx, () => flatEllipse(ctx, cam, p, z, rx), INK, inkW(p.s, U) * 0.6);
       }
     } else {
-      [-1, 1].forEach((side) => {
-        for (let i = 0; i < 70; i++) {
-          const z = 2.6 + Math.pow(rng(), 1.7) * 30;
-          const p = cam.p(road.x(z) + side * (halfW - 0.1 + rng() * 0.55), z, 0);
-          const r = Math.max(0.5 * U, p.s * (0.02 + rng() * 0.03));
-          ctx.fillStyle = col(pal.rock || base, -10 + rng() * 30, -10, 0.85);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r, 0, TAU);
-          ctx.fill();
-        }
-      });
       if (rng() < 0.75 && kind !== "paved") {
         const tx = (rng() - 0.5) * halfW * 0.8;
         const dir = rng() < 0.5 ? 1 : -1;
@@ -1079,18 +881,10 @@
           ctx.fill();
         }
       }
-      for (let i = 0; i < 18; i++) {
-        const z = 2.8 + Math.pow(rng(), 1.8) * 22;
-        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW * 1.8, z, 0);
-        const r = Math.max(0.9 * U, p.s * (0.028 + rng() * 0.03));
-        const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
-        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.35, r, (rng() - 0.5) * 0.6, 0, TAU), col({ h: hue, s: 70, l: 68 }), { ink: Math.max(0.6, U * 0.8) });
-        paint(ctx, () => ctx.ellipse(p.x - r * 0.4, p.y - r * 0.35, r * 0.4, r * 0.22, 0, 0, TAU), "rgba(255,255,255,0.7)");
-      }
       if (roadCls === "minor") {
-        for (let z = 3; z < 26; z += 1.4 + rng()) {
-          const p = cam.p(road.x(z) + (rng() - 0.5) * 0.3, z, 0);
-          P.tuft(ctx, p.x, p.y, p.s, 0.2 + rng() * 0.12, pal.plantA, rng, U);
+        for (let z = 4; z < 22; z += 4) {
+          const p = cam.p(road.x(z), z, 0);
+          P.tuft(ctx, p.x, p.y, p.s, 0.22, pal.plantA, rng, U);
         }
       }
       const odd = rng();
@@ -1127,30 +921,6 @@
           ctx.restore();
         }
       }
-    }
-    const flowers = city ? 0 : 34;
-    for (let i = 0; i < flowers; i++) {
-      const z = 2.6 + Math.pow(rng(), 1.6) * 26;
-      const side = rng() < 0.5 ? -1 : 1;
-      const p = cam.p(road.x(z) + side * (halfW + 0.1 + rng() * 0.7), z, 0);
-      const r = Math.max(1.1 * U, p.s * 0.055);
-      const hue = GOOFY_HUES[Math.floor(rng() * GOOFY_HUES.length)];
-      ctx.fillStyle = col({ h: hue, s: 85, l: 68 });
-      ctx.beginPath();
-      for (let k = 0; k < 5; k++) {
-        const a = (k / 5) * TAU + i;
-        ctx.moveTo(p.x + Math.cos(a) * r + r * 0.55, p.y - r + Math.sin(a) * r);
-        ctx.arc(p.x + Math.cos(a) * r, p.y - r + Math.sin(a) * r, r * 0.55, 0, TAU);
-      }
-      ctx.fill();
-      ctx.fillStyle = hue === 48 ? "#ff5fa8" : "#ffd84a";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y - r, r * 0.45, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = G.wc.PEN;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y - r, r * 0.15, 0, TAU);
-      ctx.fill();
     }
   }
 
@@ -1191,18 +961,17 @@
     ctx.restore();
   }
 
-  function edgeBlades(ctx, cam, road, zs, halfW, wobL, wobR, pal, U) {
+  function edgeBlades(ctx, cam, road, zs, halfW, pal, U) {
     const blade = col(pal.plantA, -4);
     [-1, 1].forEach((side) => {
-      const wob = side < 0 ? wobL : wobR;
       ctx.fillStyle = blade;
       ctx.strokeStyle = INK;
       ctx.lineWidth = Math.max(0.6, 0.8 * U);
       ctx.beginPath();
       for (let i = 0; i < zs.length && zs[i] < 34; i++) {
-        if (i % 2) continue;
+        if (i % 3) continue;
         const z = zs[i];
-        const p = cam.p(road.x(z) + side * halfW + wob[i], z, 0);
+        const p = cam.p(road.x(z) + side * halfW, z, 0);
         const h = p.s * (0.16 + ((i * 7) % 5) * 0.03);
         const w = p.s * 0.08;
         ctx.moveTo(p.x - w, p.y + h * 0.1);
@@ -1217,7 +986,7 @@
     });
   }
 
-  function drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build, wobL, wobR) {
+  function drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build) {
     const asphalt = { h: 255, s: 12, l: 50 };
     ctx.fillStyle = col(pal.dirt, -6, 0, 0.7);
     ctx.beginPath();
@@ -1236,24 +1005,22 @@
     centerLine(ctx, cam, road, zs, profile, drng, zMax);
     stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW), INK, 1.6 * U);
     stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW), INK, 1.6 * U);
-    edgeBlades(ctx, cam, road, zs, halfW + 0.5, wobL, wobR, pal, U);
+    edgeBlades(ctx, cam, road, zs, halfW + 0.5, pal, U);
   }
 
   function drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax) {
     const zs = roadSamples(cam, zMax);
     const drng = G.mulberry32(Math.floor(rng() * 4294967296));
-    const wobL = zs.map(() => (rng() - 0.5) * 0.25);
-    const wobR = zs.map(() => (rng() - 0.5) * 0.25);
     const city = kind === "city";
     const paved = !city && roadCls === "major" && !!profile.linePattern;
     const build = () => {
       zs.forEach((z, i) => {
-        const p = cam.p(road.x(z) - halfW + (city ? 0 : wobL[i]), z, 0);
+        const p = cam.p(road.x(z) - halfW, z, 0);
         if (i === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
       });
       for (let i = zs.length - 1; i >= 0; i--) {
-        const p = cam.p(road.x(zs[i]) + halfW + (city ? 0 : wobR[i]), zs[i], 0);
+        const p = cam.p(road.x(zs[i]) + halfW, zs[i], 0);
         ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
@@ -1286,7 +1053,7 @@
       ctx.fill();
       ctx.strokeStyle = col(asphalt, -18, 0, 0.75);
       ctx.lineWidth = Math.max(0.6, 0.9 * U);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 2; i++) {
         let z = 3.5 + rng() * 22;
         let x = road.x(z) + (rng() - 0.5) * halfW * 1.6;
         ctx.beginPath();
@@ -1344,7 +1111,7 @@
         }
       }
     } else if (paved) {
-      drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build, wobL, wobR);
+      drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build);
     } else {
       const dirt = pal.dirt;
       const g = ctx.createLinearGradient(0, farY, 0, cam.H);
@@ -1372,44 +1139,33 @@
         strip(ctx, cam, road, zs, -0.25, 0.25);
         ctx.fill();
       }
-      for (let i = 0; i < 3; i++) {
-        const z = 4 + rng() * 22;
-        const x = road.x(z) + (rng() < 0.5 ? -0.45 : 0.45) * halfW;
-        const p = cam.p(x, z, 0);
-        const rx = p.s * (0.4 + rng() * 0.5);
-        const ry = rx * (cam.ch / z);
-        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, { h: 200, s: 60, l: 80 }, 0.4)), { ink: inkW(p.s, U) * 0.7 });
-        G.wc.bloom(ctx, p.x + rx * 0.2, p.y + ry * 0.1, rx * 0.4, col(pal.sky0, 8, 10), 0.45);
-        paint(ctx, () => ctx.ellipse(p.x - rx * 0.25, p.y - ry * 0.2, rx * 0.35, ry * 0.25, 0, 0, TAU), "rgba(255,255,255,0.6)");
-        stroke(ctx, () => ctx.ellipse(p.x + rx * 0.15, p.y + ry * 0.05, rx * 0.5, ry * 0.45, 0, 0, TAU), "rgba(255,255,255,0.7)", Math.max(0.6, U * 0.8));
+      ctx.strokeStyle = col(dirt, -20, 0, 0.7);
+      ctx.lineWidth = Math.max(0.7, U);
+      for (let i = 0; i < 2; i++) {
+        let z = 6 + rng() * 14;
+        let x = road.x(z) + (rng() - 0.5) * halfW * 0.6;
+        ctx.beginPath();
+        let p = cam.p(x, z, 0);
+        ctx.moveTo(p.x, p.y);
+        for (let k = 0; k < 3; k++) {
+          x += (rng() - 0.5) * 0.35;
+          z += 0.6 + rng() * 0.5;
+          p = cam.p(x, z, 0);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
       }
-      for (let i = 0; i < 40; i++) {
-        const z = 2.6 + Math.pow(rng(), 2) * 30;
-        const x = road.x(z) + (rng() - 0.5) * halfW * 1.9;
-        const p = cam.p(x, z, 0);
-        const r = Math.max(0.6 * U, p.s * (0.04 + rng() * 0.05));
-        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.3, r, 0, 0, TAU), col(dirt, -18 + rng() * 30), { ink: Math.max(0.5, U * 0.6) });
-      }
-      for (let i = 0; i < 26; i++) {
-        const z = 2.6 + Math.pow(rng(), 1.6) * 24;
-        const side = rng() < 0.5 ? -1 : 1;
-        const p = cam.p(road.x(z) + side * (halfW - 0.15 - rng() * 0.3), z, 0);
-        const r = Math.max(0.8 * U, p.s * (0.07 + rng() * 0.06));
-        paint(ctx, () => ctx.ellipse(p.x, p.y, r * 1.4, r, 0, 0, TAU), col(pal.rock || dirt, 6 + rng() * 14, -10), { ink: Math.max(0.6, U * 0.8) });
-        paint(ctx, () => ctx.ellipse(p.x - r * 0.4, p.y - r * 0.35, r * 0.45, r * 0.25, 0, 0, TAU), "rgba(255,255,255,0.55)");
-      }
-      stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW, wobL), INK, 1.6 * U);
-      stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW, wobR), INK, 1.6 * U);
-      edgeBlades(ctx, cam, road, zs, halfW, wobL, wobR, pal, U);
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW), INK, 1.6 * U);
+      stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW), INK, 1.6 * U);
+      edgeBlades(ctx, cam, road, zs, halfW, pal, U);
     }
     drawRoadDetail(ctx, cam, road, halfW, paved ? "paved" : kind, roadCls, profile, pal, drng, U, zMax, zs, city || paved ? { h: 255, s: 14, l: 46 } : pal.dirt);
     drawPathStyle(ctx, cam, road, halfW, profile, zs, U, zMax);
     if (!city) {
-      for (let i = 0; i < 46; i++) {
-        const z = 2.6 + Math.pow(rng(), 1.8) * 40;
-        const side = rng() < 0.5 ? -1 : 1;
-        const p = cam.p(road.x(z) + side * (halfW + (rng() - 0.3) * 0.5), z, 0);
-        P.tuft(ctx, p.x, p.y, p.s, 0.35 + rng() * 0.3, pal.plantA, rng, U);
+      for (let z = 4; z < 26; z += 4.5) {
+        const side = z % 2 ? -1 : 1;
+        const p = cam.p(road.x(z) + side * (halfW + 0.4), z, 0);
+        P.tuft(ctx, p.x, p.y, p.s, 0.42, pal.plantA, rng, U);
       }
     }
   }
@@ -2146,9 +1902,9 @@
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
     const grade = ctx.createLinearGradient(0, 0, 0, H);
-    grade.addColorStop(0, "rgba(255, 170, 215, 0.16)");
-    grade.addColorStop(0.55, "rgba(255, 240, 210, 0.12)");
-    grade.addColorStop(1, "rgba(90, 120, 255, 0.14)");
+    grade.addColorStop(0, "rgba(255, 170, 215, 0.05)");
+    grade.addColorStop(0.55, "rgba(255, 240, 210, 0.03)");
+    grade.addColorStop(1, "rgba(90, 120, 255, 0.04)");
     ctx.fillStyle = grade;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
@@ -2156,7 +1912,7 @@
     G.wc.finish(ctx, W, H, rng, U, accents);
     const v = ctx.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
     v.addColorStop(0, "rgba(40, 10, 60, 0)");
-    v.addColorStop(1, "rgba(40, 10, 60, 0.24)");
+    v.addColorStop(1, "rgba(40, 10, 60, 0.1)");
     ctx.fillStyle = v;
     ctx.fillRect(0, 0, W, H);
   }
@@ -2294,7 +2050,6 @@
     drawBand(ctx, cam, hz.bands.mid, hz.meta.mid, pal.hill, haze, { haze: 0.32, snow: true, ink: 1.1, inkAlpha: 0.6, trees: 7 }, rng, U);
     drawBand(ctx, cam, hz.bands.near, hz.meta.near, shade(pal.hill, -6), haze, { haze: 0.12, snow: false, ink: 1.4, inkAlpha: 0.8, trees: 12 }, rng, U);
     drawGround(ctx, cam, hz, pal, rng, U);
-    drawHatching(ctx, cam, road, halfW, pal, rng, U, kind === "city" ? 0 : 420);
     if (shown.groundPattern && kind !== "city") drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U);
     drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax);
 

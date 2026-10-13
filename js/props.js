@@ -220,82 +220,20 @@
       ctx.quadraticCurveTo(x + w0 * 1.05, y - H * 0.015, x + w0 * 2.1, y);
       ctx.closePath();
     }, col(trunk), { ink: iw, glaze: col(trunk, -20), edge: w0 * 0.9 });
-    const deco = rand();
-    if (H > 20 && deco < 0.45) {
-      ctx.save();
+    const crown = () => {
       ctx.beginPath();
-      ctx.moveTo(x - w0 * 1.2, y);
-      ctx.quadraticCurveTo(midX - w0 * 0.9, midY, tx - w1, ty);
-      ctx.lineTo(tx + w1, ty);
-      ctx.quadraticCurveTo(midX + w0 * 0.9, midY, x + w0 * 1.2, y);
+      ctx.moveTo(tx - H * 0.02, ty + H * 0.04);
+      ctx.bezierCurveTo(tx - H * 0.36, ty + H * 0.02, tx - H * 0.42, ty - H * 0.26, tx - H * 0.14, ty - H * 0.4);
+      ctx.bezierCurveTo(tx - H * 0.04, ty - H * 0.58, tx + H * 0.1, ty - H * 0.56, tx + H * 0.18, ty - H * 0.38);
+      ctx.bezierCurveTo(tx + H * 0.42, ty - H * 0.22, tx + H * 0.3, ty + H * 0.04, tx + H * 0.02, ty + H * 0.08);
+      ctx.quadraticCurveTo(tx, ty + H * 0.12, tx - H * 0.02, ty + H * 0.04);
       ctx.closePath();
-      ctx.clip();
-      const dotC = col({ h: trunk.h + 150, s: 70, l: 76 }, 0, 0, 0.85);
-      ctx.fillStyle = dotC;
-      if (deco < 0.25) {
-        for (let i = 0; i < 9; i++) {
-          const k = 0.08 + i * 0.1;
-          const px = (1 - k) * (1 - k) * x + 2 * (1 - k) * k * midX + k * k * tx + ((i % 2) - 0.5) * w0 * 0.9;
-          const py = (1 - k) * (1 - k) * y + 2 * (1 - k) * k * midY + k * k * ty;
-          ctx.beginPath();
-          ctx.arc(px, py, w0 * 0.32, 0, TAU);
-          ctx.fill();
-        }
-      } else {
-        ctx.lineWidth = Math.max(1, w0 * 0.45);
-        ctx.strokeStyle = dotC;
-        ctx.beginPath();
-        for (let k = 0.06; k < 1; k += 0.13) {
-          const px = (1 - k) * (1 - k) * x + 2 * (1 - k) * k * midX + k * k * tx;
-          const py = (1 - k) * (1 - k) * y + 2 * (1 - k) * k * midY + k * k * ty;
-          ctx.moveTo(px - w0 * 1.5, py + w0 * 0.5);
-          ctx.lineTo(px + w0 * 1.5, py - w0 * 0.5);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-    if (H > 24) {
-      ctx.strokeStyle = col(trunk, -24, 0, 0.8);
-      ctx.lineWidth = Math.max(0.6, iw * 0.6);
-      ctx.lineCap = "round";
-      for (let i = 0; i < 3; i++) {
-        const k = 0.2 + i * 0.2 + rand() * 0.08;
-        const px = (1 - k) * (1 - k) * x + 2 * (1 - k) * k * midX + k * k * tx;
-        const py = (1 - k) * (1 - k) * y + 2 * (1 - k) * k * midY + k * k * ty;
-        const w = (w0 + (w1 - w0) * k) * 0.55;
-        ctx.beginPath();
-        ctx.moveTo(px - w, py);
-        ctx.quadraticCurveTo(px, py - w * 0.7, px + w * 0.3, py + w * 0.2);
-        ctx.stroke();
-      }
-    }
-    const blobs = [];
-    const n = 5 + Math.floor(rand() * 3);
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + rand() * 0.6;
-      const rr = H * (0.15 + rand() * 0.08);
-      blobs.push({ x: tx + Math.cos(a) * H * 0.18, y: ty - H * 0.12 + Math.sin(a) * H * 0.12, r: rr });
-    }
-    blobs.push({ x: tx, y: ty - H * 0.16, r: H * 0.21 });
-    blobs.push({ x: tx - H * 0.1, y: ty + H * 0.02, r: H * 0.1 });
-    blobs.push({ x: tx + H * 0.12, y: ty + H * 0.01, r: H * 0.09 });
-    blobUnion(ctx, blobs, color, iw);
-    if (H > 18 && rand() < 0.5) {
-      const hue = [330, 48, 200, 280][Math.floor(rand() * 4)];
-      const count = 4 + Math.floor(rand() * 4);
-      for (let i = 0; i < count; i++) {
-        const b = blobs[i % blobs.length];
-        const a = rand() * TAU;
-        blossom(ctx, b.x + Math.cos(a) * b.r * 0.55, b.y + Math.sin(a) * b.r * 0.55, Math.max(1.2, H * 0.025), hue, iw);
-      }
-    }
-    if (H > 40 && rand() < 0.07) {
-      const ex = (x + midX) / 2;
-      const ey = (y + midY) / 2 - H * 0.04;
-      googly(ctx, ex - w0 * 0.55, ey, w0 * 0.6, rand, iw);
-      googly(ctx, ex + w0 * 0.6, ey - w0 * 0.1, w0 * 0.52, rand, iw);
-    }
+    };
+    paint(ctx, crown, col(color), { ink: iw, glaze: col(color, -18), edge: Math.max(2, H * 0.04) });
+    ctx.fillStyle = col(shade(color, 18), 0, 0, 0.85);
+    ctx.beginPath();
+    ctx.ellipse(tx - H * 0.08, ty - H * 0.26, H * 0.07, H * 0.04, -0.55, 0, TAU);
+    ctx.fill();
   }
 
   function blossom(ctx, x, y, r, hue, iw) {
@@ -1508,7 +1446,7 @@
     const sNear = view.p(xa, z0, 0).s;
     const sFar = view.p(xa, z0 + d, 0).s;
     const iw = inkW((sNear + sFar) / 2, U);
-    paint(ctx, () => quadPath(ctx, front, 0, 0, w, h), col(b.wall, -10), { ink: iw, glaze: col(b.wall, -24), edge: 4 * iw });
+    paint(ctx, () => quadPath(ctx, front, 0, 0, w, h), col(b.wall, -18), { ink: iw, glaze: col(b.wall, -30), edge: 4 * iw });
     paint(ctx, () => quadPath(ctx, facade, 0, 0, d, h), col(b.wall), { ink: iw, glaze: col(b.wall, -22), edge: 6 * iw });
     paint(ctx, () => quadPath(ctx, facade, 0, 0, d, 0.4), col(b.wall, -26), { ink: iw * 0.7 });
     paint(ctx, () => quadPath(ctx, front, 0, 0, w, 0.5), "rgba(27, 16, 51, 0.2)");
@@ -1526,11 +1464,7 @@
       const balcony = b.balconies && f % 2 === 1;
       for (let c = 0; c < cols; c++) {
         const u = c * step + step * 0.25;
-        if (rand() < 0.35) stain(ctx, facade, u, v + 0.4, step * 0.5, rand);
         windowShape(ctx, facade, b.windowStyle, u, v + 0.4, step * 0.5, 1.5, glassColor(rand), iw * 0.8);
-        if (!balcony && rand() < 0.18) {
-          paint(ctx, () => quadPath(ctx, facade, u + step * 0.05, v + 0.0, u + step * 0.4, v + 0.35), col({ h: 220, s: 10, l: 86 }), { ink: iw * 0.6 });
-        }
       }
       if (balcony) {
         const out = 0.8;
