@@ -162,101 +162,25 @@
   // ---------- strokes ----------
 
   function line(ctx, build, width, color) {
-    const U = state.U;
-    const A = ctx.globalAlpha;
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    if (state.line === "pen") {
-      ctx.strokeStyle = color || PEN;
-      ctx.lineWidth = Math.max(0.7, width * 0.78);
-      ctx.beginPath();
-      build();
-      ctx.stroke();
-      const a = rand() * TAU;
-      ctx.translate(Math.cos(a) * 0.7 * U, Math.sin(a) * 0.7 * U);
-      ctx.globalAlpha = A * 0.32;
-      ctx.lineWidth = Math.max(0.5, width * 0.42);
-      ctx.beginPath();
-      build();
-      ctx.stroke();
-    } else {
-      const grain = patternFor(ctx, "graphite");
-      ctx.strokeStyle = grain;
-      for (let pass = 0; pass < 2; pass++) {
-        const a = rand() * TAU;
-        const d = (0.35 + rand() * 0.6) * U;
-        ctx.save();
-        ctx.translate(Math.cos(a) * d, Math.sin(a) * d);
-        ctx.globalAlpha = A * (pass === 0 ? 0.95 : 0.55);
-        ctx.lineWidth = Math.max(0.7, width * (pass === 0 ? 0.62 : 0.4));
-        ctx.beginPath();
-        build();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
+    ctx.strokeStyle = color || INK;
+    ctx.lineWidth = Math.max(1, width || 1);
+    ctx.beginPath();
+    build();
+    ctx.stroke();
     ctx.restore();
   }
 
   function wash(ctx, build, fill, opts) {
     const o = opts || {};
-    const U = state.U;
-    const a = rand() * TAU;
-    const off = (0.8 + rand() * 1.4) * U * (o.bleed === undefined ? 1 : o.bleed);
     ctx.save();
     ctx.fillStyle = fill;
-    if (!o.soft) {
-      ctx.save();
-      ctx.translate(Math.cos(a) * off, Math.sin(a) * off);
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath();
-      build();
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.globalAlpha = o.alpha || 0.9;
+    if (o.alpha) ctx.globalAlpha *= o.alpha;
     ctx.beginPath();
     build();
     ctx.fill();
-    ctx.clip();
-    ctx.globalAlpha = 1;
-    if (!o.flat) {
-      const m = patternFor(ctx, "mottle");
-      if (m.setTransform) {
-        const k = 1 + rand() * 1.5;
-        m.setTransform(new DOMMatrix([k, 0, 0, k, rand() * 256, rand() * 256]));
-      }
-      ctx.globalCompositeOperation = "multiply";
-      ctx.fillStyle = m;
-      ctx.globalAlpha = o.mottle === undefined ? 0.62 : o.mottle;
-      ctx.beginPath();
-      build();
-      ctx.fill();
-      const l = patternFor(ctx, "lift");
-      if (l.setTransform) {
-        const k = 0.8 + rand() * 1.6;
-        l.setTransform(new DOMMatrix([k, 0, 0, k, rand() * 256, rand() * 256]));
-      }
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = l;
-      ctx.globalAlpha = 0.24;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (o.soft) {
-      ctx.restore();
-      return;
-    }
-    ctx.globalCompositeOperation = "multiply";
-    ctx.strokeStyle = "rgba(80, 30, 100, 0.2)";
-    ctx.lineWidth = 3.4 * U;
-    ctx.beginPath();
-    build();
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(80, 30, 100, 0.16)";
-    ctx.lineWidth = 1.3 * U;
-    ctx.stroke();
     ctx.restore();
   }
 
@@ -290,7 +214,6 @@
 
   function paint(ctx, build, fill, o) {
     wash(ctx, build, fill, o);
-    if (o && o.glaze) glaze(ctx, build, o.glaze, o.edge, o.glazeAlpha);
     if (o && o.ink) line(ctx, build, o.ink);
   }
 
@@ -299,61 +222,12 @@
     ctx.globalAlpha = alpha === undefined ? 0.35 : alpha;
     ctx.fillStyle = color;
     ctx.beginPath();
-    const n = 9;
-    for (let i = 0; i <= n; i++) {
-      const t = (i / n) * TAU;
-      const rr = r * (0.75 + rand() * 0.4);
-      if (i === 0) ctx.moveTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr);
-      else ctx.lineTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr);
-    }
-    ctx.closePath();
+    ctx.ellipse(x, y, r, r * 0.72, 0, 0, TAU);
     ctx.fill();
-    ctx.globalAlpha = (alpha === undefined ? 0.35 : alpha) * 0.6;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(0.6, r * 0.08);
-    ctx.stroke();
     ctx.restore();
   }
 
-  function finish(ctx, W, H, rng, U, accents) {
-    ctx.save();
-    ctx.globalCompositeOperation = "multiply";
-    ctx.fillStyle = patternFor(ctx, "paper");
-    ctx.globalAlpha = 0.4;
-    ctx.fillRect(0, 0, W, H);
-    const m = patternFor(ctx, "mottle");
-    if (m.setTransform) m.setTransform(new DOMMatrix([3, 0, 0, 3, rng() * 512, rng() * 512]));
-    ctx.fillStyle = m;
-    ctx.globalAlpha = 0.1;
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-    const drops = 6 + Math.floor(rng() * 8);
-    for (let i = 0; i < drops; i++) {
-      const x = rng() * W;
-      const y = rng() * H;
-      const r = (1 + Math.pow(rng(), 3) * 7) * U;
-      const c = accents[Math.floor(rng() * accents.length)];
-      ctx.save();
-      ctx.globalCompositeOperation = "multiply";
-      ctx.globalAlpha = 0.35 + rng() * 0.3;
-      ctx.fillStyle = c;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha *= 0.8;
-      ctx.strokeStyle = c;
-      ctx.lineWidth = Math.max(0.5, r * 0.25);
-      ctx.stroke();
-      for (let k = 0; k < 3 && r > 3 * U; k++) {
-        const a = rng() * TAU;
-        const d = r * (1.4 + rng() * 1.6);
-        ctx.beginPath();
-        ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (0.15 + rng() * 0.2), 0, TAU);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-  }
+  function finish() {}
 
   G.wc = { begin, end, active, setLine, withLine, rand, line, wash, texture, glaze, paint, bloom, finish, paper, patternFor, INK, PEN };
 })(window.ProbeDrop = window.ProbeDrop || {});

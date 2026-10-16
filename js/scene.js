@@ -176,23 +176,13 @@
   function drawSky(ctx, cam, pal, profile, rng, U) {
     const { W, y0 } = cam;
     const g = ctx.createLinearGradient(0, 0, 0, y0);
-    g.addColorStop(0, col(pal.sky0, -6));
-    g.addColorStop(0.25, col(mixC(pal.sky0, pal.sky1, 0.45), -2));
-    g.addColorStop(0.55, col(pal.sky1));
-    g.addColorStop(0.82, col(mixC(pal.sky1, pal.glow, 0.6)));
-    g.addColorStop(1, col(pal.glow, 4));
+    g.addColorStop(0, col(pal.sky0));
+    g.addColorStop(1, col(pal.sky1));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, y0 + 4);
-    const glowY = y0 + 10 * U;
-    const glow = ctx.createRadialGradient(W * 0.5, glowY, 0, W * 0.5, glowY, W * 0.6);
-    glow.addColorStop(0, col(pal.glow, 14, 0, 0.6));
-    glow.addColorStop(0.45, col(pal.glow, 10, 0, 0.22));
-    glow.addColorStop(1, col(pal.glow, 10, 0, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, W, y0 + 4);
-    G.wc.texture(ctx, 0, 0, W, y0 + 4, 0.18, 2.2);
     void profile;
     void rng;
+    void U;
   }
 
   function crescentPath(ctx, x, y, r, d, rot) {
@@ -263,10 +253,6 @@
   }
 
   function cloudShape(ctx, cx, cy, w, h, color, iw) {
-    ctx.fillStyle = col(color, -22, -12, 0.22);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + h * 0.38, w * 0.42, h * 0.14, 0, 0, TAU);
-    ctx.fill();
     const path = () => {
       ctx.beginPath();
       ctx.moveTo(cx - w * 0.46, cy + h * 0.18);
@@ -277,11 +263,7 @@
       ctx.quadraticCurveTo(cx, cy + h * 0.34, cx - w * 0.46, cy + h * 0.18);
       ctx.closePath();
     };
-    paint(ctx, path, col(color), { ink: iw, glaze: col(color, -8), edge: h * 0.12 });
-    ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
-    ctx.beginPath();
-    ctx.ellipse(cx - w * 0.1, cy - h * 0.18, w * 0.1, h * 0.16, -0.4, 0, TAU);
-    ctx.fill();
+    paint(ctx, path, col(color), { ink: Math.max(2, iw * 1.8) });
   }
 
   const STAR_PATTERNS = {
@@ -496,32 +478,10 @@
       ctx.lineTo(cam.W, cam.y0 + 3);
       ctx.closePath();
     };
-    const top = opts.snow && info.some((m) => m.e > 0.74) ? mixC(color, { h: 220, s: 30, l: 97 }, 0.65) : shade(color, 8);
-    const g = ctx.createLinearGradient(0, minY, 0, cam.y0);
-    g.addColorStop(0, col(mixC(top, haze, opts.haze * 0.6)));
-    g.addColorStop(1, col(mixC(color, haze, opts.haze)));
-    paint(ctx, build, g, { glaze: col(color, -16, 0), glazeAlpha: 0.25, edge: 8 * U });
-    if (G.wc.active()) {
-      ctx.save();
-      ctx.beginPath();
-      build();
-      ctx.clip();
-      ctx.globalAlpha = 0.32 + opts.inkAlpha * 0.2;
-      G.wc.line(ctx, () => {
-        for (let i = 1; i < ys.length - 1; i += 1) {
-          const depth = cam.y0 - ys[i];
-          if (depth < 8 * U || (i * 7) % 3 === 0) continue;
-          const len = Math.min(depth * 0.5, (8 + ((i * 13) % 7) * 2) * U);
-          const x = xs[i];
-          const y = ys[i] + 3 * U;
-          ctx.moveTo(x, y);
-          ctx.lineTo(x - len * 0.55, y + len);
-          ctx.moveTo(x + 4 * U, y + 1 * U);
-          ctx.lineTo(x + 4 * U - len * 0.45, y + len * 0.8);
-        }
-      }, 1.3 * U);
-      ctx.restore();
-    }
+    paint(ctx, build, col(color));
+    void minY;
+    void haze;
+    void rng;
     if (opts.snow) {
       let run = [];
       const flush = () => {
@@ -548,30 +508,7 @@
     stroke(ctx, () => {
       ctx.moveTo(xs[0], ys[0]);
       smoothPath(ctx, xs, ys);
-    }, `rgba(27, 16, 51, ${opts.inkAlpha})`, opts.ink * U);
-    if (opts.trees) {
-      const treeColor = mixC(shade(color, -10), haze, opts.haze * 0.7);
-      for (let i = 1; i < ys.length - 1; i += 2) {
-        const y = ys[i];
-        if (y > cam.y0 - 2 || info[i].e > 0.6 || info[i].m < 0.42 || rng() < 0.35) continue;
-        const x = xs[i] + (rng() - 0.5) * (cam.W / COLUMNS);
-        const size = opts.trees * U * (0.7 + rng() * 0.6);
-        if (rng() < 0.5) {
-          stroke(ctx, () => {
-            ctx.moveTo(x, y + size * 0.3);
-            ctx.lineTo(x, y - size);
-          }, `rgba(27, 16, 51, ${opts.inkAlpha})`, Math.max(1, U));
-          paint(ctx, () => ctx.arc(x, y - size, size * 0.55, 0, TAU), col(treeColor), { ink: opts.ink * U * 0.8 });
-        } else {
-          paint(ctx, () => {
-            ctx.moveTo(x - size * 0.5, y + 1);
-            ctx.lineTo(x, y - size * 1.5);
-            ctx.lineTo(x + size * 0.5, y + 1);
-            ctx.closePath();
-          }, col(treeColor), { ink: opts.ink * U * 0.8 });
-        }
-      }
-    }
+    }, INK, Math.max(1.6, opts.ink * U));
   }
 
   function drawSea(ctx, cam, hz, pal, rng, U) {
@@ -659,27 +596,12 @@
       ctx.lineTo(cam.W, cam.H);
       ctx.closePath();
     };
-    const g = ctx.createLinearGradient(0, cam.y0, 0, cam.H);
-    g.addColorStop(0, col(pal.groundFar, 6));
-    g.addColorStop(0.18, col(mixC(pal.groundFar, pal.ground, 0.7)));
-    g.addColorStop(1, col(pal.ground, -6));
-    paint(ctx, build, g);
-    ctx.save();
-    ctx.beginPath();
-    build();
-    ctx.clip();
-    const wash = ctx.createRadialGradient(cam.W * 0.45, cam.H * 0.92, cam.W * 0.05, cam.W * 0.5, cam.y0, cam.W * 0.9);
-    wash.addColorStop(0, col(shade(pal.ground, -12), 0, 0, 0.2));
-    wash.addColorStop(0.55, col(pal.plantA, 0, 0, 0.08));
-    wash.addColorStop(1, col(pal.ground, 0, 0, 0));
-    ctx.fillStyle = wash;
-    ctx.fillRect(0, cam.y0 - 8, cam.W, cam.H);
-    ctx.restore();
+    paint(ctx, build, col(pal.ground));
     void rng;
     stroke(ctx, () => {
       ctx.moveTo(0, tops[0]);
       for (let i = 1; i < xs.length; i++) ctx.lineTo(xs[i], tops[i]);
-    }, "rgba(27, 16, 51, 0.45)", 1.1 * U);
+    }, INK, Math.max(1.5, 1.6 * U));
   }
 
   function drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U) {
@@ -863,24 +785,6 @@
         }, col(base, -24, 0, 0.8), Math.max(0.6, U * 0.9));
       }
     } else {
-      if (rng() < 0.75 && kind !== "paved") {
-        const tx = (rng() - 0.5) * halfW * 0.8;
-        const dir = rng() < 0.5 ? 1 : -1;
-        for (let z = 3 + rng() * 2, k = 0; z < 20; z += 1.25, k++) {
-          const x = tx + (k % 2 ? 0.17 : -0.17) + Math.sin(z * 0.4) * 0.3 * dir;
-          const p = cam.p(road.x(z) + x, z, 0);
-          const rx = p.s * 0.11;
-          ctx.fillStyle = col(base, -30, 6, 0.62);
-          ctx.beginPath();
-          flatEllipse(ctx, cam, p, z, rx, 1.7);
-          for (let t = -1; t <= 1; t++) {
-            const q = cam.p(road.x(z + 0.3) + x + t * 0.1, z + 0.3, 0);
-            ctx.moveTo(q.x + rx * 0.4, q.y);
-            flatEllipse(ctx, cam, q, z + 0.3, rx * 0.4, 1.2);
-          }
-          ctx.fill();
-        }
-      }
       if (roadCls === "minor") {
         for (let z = 4; z < 22; z += 4) {
           const p = cam.p(road.x(z), z, 0);
@@ -961,30 +865,7 @@
     ctx.restore();
   }
 
-  function edgeBlades(ctx, cam, road, zs, halfW, pal, U) {
-    const blade = col(pal.plantA, -4);
-    [-1, 1].forEach((side) => {
-      ctx.fillStyle = blade;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = Math.max(0.6, 0.8 * U);
-      ctx.beginPath();
-      for (let i = 0; i < zs.length && zs[i] < 34; i++) {
-        if (i % 3) continue;
-        const z = zs[i];
-        const p = cam.p(road.x(z) + side * halfW, z, 0);
-        const h = p.s * (0.16 + ((i * 7) % 5) * 0.03);
-        const w = p.s * 0.08;
-        ctx.moveTo(p.x - w, p.y + h * 0.1);
-        ctx.lineTo(p.x - side * w * 0.6, p.y - h);
-        ctx.lineTo(p.x + w * 0.2, p.y + h * 0.05);
-        ctx.lineTo(p.x - side * w * 1.6, p.y - h * 0.7);
-        ctx.lineTo(p.x + w, p.y + h * 0.1);
-        ctx.closePath();
-      }
-      ctx.fill();
-      ctx.stroke();
-    });
-  }
+  function edgeBlades() {}
 
   function drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build) {
     const asphalt = { h: 255, s: 12, l: 50 };
@@ -1732,47 +1613,54 @@
   }
 
   function populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown, L) {
+    let wired = false;
     [-1, 1].forEach((side) => {
       L.block(road.x(3) + side * (halfW + 3.2), road.x(3) + side * (halfW + 40), 0, 250);
       let z = 3 + rng() * 3;
-      while (z < 240) {
-        const depth = 8 + rng() * 8;
+      let neonUsed = false;
+      while (z < 140) {
+        const depth = 12 + rng() * 8;
         const z0 = z;
+        const neon = !neonUsed && z0 < 36
+          ? { h: profile.accentColor.h, s: 90, l: 62 }
+          : null;
+        if (neon) neonUsed = true;
         const spec = {
           xa: road.x(z0) + side * (halfW + 3.2),
           side,
           z0,
-          width: 10 + rng() * 6,
+          width: 14 + rng() * 8,
           depth,
-          height: 9 + rng() * 22 + (z0 > 80 ? rng() * 14 : 0),
+          height: 12 + rng() * 16 + (z0 > 70 ? rng() * 10 : 0),
           wall: wallPalette(profile, rng, shown.building),
           roof: shown.building ? profile.roofColor : { h: 260, s: 12, l: 50 },
           roofShape: shown.building ? profile.roofShape : null,
           windowStyle: shown.building ? profile.windowStyle : "plain",
-          awning: { h: rng() * 360, s: 75, l: 62 },
+          awning: profile.accentColor,
           balconies: rng() < 0.45,
           pipe: rng() < 0.5,
-          neon: rng() < 0.55 ? { h: [320, 190, 50, 280][Math.floor(rng() * 4)], s: 95, l: 62 } : null,
+          neon,
           glyphs: glyphRun(rng, 3),
           rand: rng,
         };
         queue.push({ z: z0 + depth, draw: (ctx) => P.building(ctx, cam, spec, U) });
-        if (rng() < 0.35 && z0 < 70) {
+        if (!wired && z0 > 10 && z0 < 28) {
+          wired = true;
           const cz = z0 + depth * 0.5;
           const other = road.x(cz) - side * (halfW + 3.2);
           const mine = road.x(cz) + side * (halfW + 3.2);
-          const h1 = 6 + rng() * 3;
-          const h2 = 6 + rng() * 3;
+          const h1 = 8;
+          const h2 = 8;
           queue.push({ z: cz - 0.05, draw: (ctx) => {
             const a = cam.p(mine, cz, h1);
             const b = cam.p(other, cz, h2);
             stroke(ctx, () => {
               ctx.moveTo(a.x, a.y);
               ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 + a.s * 1.2, b.x, b.y);
-            }, INK, Math.max(0.8, U));
+            }, INK, Math.max(1.4, 1.6 * U));
           } });
         }
-        z += depth + (rng() < 0.25 ? 1.5 + rng() * 2 : 0);
+        z += depth + 12 + rng() * 10;
       }
     });
     if (rng() < 0.6) {
@@ -1897,25 +1785,7 @@
     void pal;
   }
 
-  function finish(ctx, cam, U, pal, profile, rng) {
-    const { W, H } = cam;
-    ctx.save();
-    ctx.globalCompositeOperation = "soft-light";
-    const grade = ctx.createLinearGradient(0, 0, 0, H);
-    grade.addColorStop(0, "rgba(255, 170, 215, 0.05)");
-    grade.addColorStop(0.55, "rgba(255, 240, 210, 0.03)");
-    grade.addColorStop(1, "rgba(90, 120, 255, 0.04)");
-    ctx.fillStyle = grade;
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-    const accents = [col(profile.accentColor, 0, 10), col(pal.plantA, 4, 10), col(pal.sky0, -10, 10), "hsl(330 85% 66%)", "hsl(205 85% 62%)", "hsl(48 95% 60%)"];
-    G.wc.finish(ctx, W, H, rng, U, accents);
-    const v = ctx.createRadialGradient(W / 2, H * 0.48, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
-    v.addColorStop(0, "rgba(40, 10, 60, 0)");
-    v.addColorStop(1, "rgba(40, 10, 60, 0.1)");
-    ctx.fillStyle = v;
-    ctx.fillRect(0, 0, W, H);
-  }
+  function finish() {}
 
   function drawLoupe(ctx, W, H, hit) {
     ctx.clearRect(0, 0, W, H);
@@ -1976,9 +1846,9 @@
 
   let depthLayer = null;
 
-  function drawQueue(ctx, cam, items, haze) {
-    const bands = [[90, Infinity, 0.42], [35, 90, 0.24]];
-    bands.forEach(([z0, z1, alpha]) => {
+  function drawQueue(ctx, cam, items) {
+    const bands = [[90, Infinity], [35, 90]];
+    bands.forEach(([z0, z1]) => {
       const group = items.filter((item) => item.z >= z0 && item.z < z1);
       if (!group.length) return;
       depthLayer = depthLayer || document.createElement("canvas");
@@ -1997,9 +1867,6 @@
         G.wc.setLine(item.pencil ? "pencil" : "pen");
         item.draw(dc);
       });
-      dc.globalCompositeOperation = "source-atop";
-      dc.fillStyle = col(haze, 8, -12, alpha);
-      dc.fillRect(0, 0, cam.W, cam.H);
       ctx.drawImage(depthLayer, 0, 0);
     });
     items.filter((item) => item.z < 35).forEach((item) => {

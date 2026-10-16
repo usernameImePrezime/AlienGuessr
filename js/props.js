@@ -201,39 +201,35 @@
   function tree(ctx, x, y, s, h, color, trunk, rand, U) {
     const H = h * s;
     if (H < 2) return;
-    const iw = inkW(s, U);
-    const lean = (rand() - 0.5) * 0.3;
-    const tx = x + lean * H;
-    const ty = y - H * 0.62;
-    const w0 = Math.max(1, H * 0.07);
-    const w1 = Math.max(0.6, H * 0.035);
-    shadowBlob(ctx, x, y, H * 0.3, H * 0.05);
-    const bend = (rand() - 0.5) * H * 0.18;
-    const midX = (x + tx) / 2 + bend;
-    const midY = y - H * 0.32;
+    const iw = Math.max(1.5, inkW(s, U));
+    const flip = rand() < 0.5 ? -1 : 1;
+    const kind = Math.floor(rand() * 3);
+    const tx = x;
+    const ty = y - H * 0.58;
     paint(ctx, () => {
-      ctx.moveTo(x - w0 * 2.1, y);
-      ctx.quadraticCurveTo(x - w0 * 1.05, y - H * 0.015, x - w0, y - H * 0.09);
-      ctx.quadraticCurveTo(midX - w0 * 0.9, midY, tx - w1, ty);
-      ctx.lineTo(tx + w1, ty);
-      ctx.quadraticCurveTo(midX + w0 * 0.9, midY, x + w0, y - H * 0.09);
-      ctx.quadraticCurveTo(x + w0 * 1.05, y - H * 0.015, x + w0 * 2.1, y);
+      ctx.moveTo(x - H * 0.04, y);
+      ctx.lineTo(tx - H * 0.028, ty + H * 0.02);
+      ctx.lineTo(tx + H * 0.028, ty + H * 0.02);
+      ctx.lineTo(x + H * 0.04, y);
       ctx.closePath();
-    }, col(trunk), { ink: iw, glaze: col(trunk, -20), edge: w0 * 0.9 });
+    }, col(trunk), { ink: iw });
     const crown = () => {
       ctx.beginPath();
-      ctx.moveTo(tx - H * 0.02, ty + H * 0.04);
-      ctx.bezierCurveTo(tx - H * 0.36, ty + H * 0.02, tx - H * 0.42, ty - H * 0.26, tx - H * 0.14, ty - H * 0.4);
-      ctx.bezierCurveTo(tx - H * 0.04, ty - H * 0.58, tx + H * 0.1, ty - H * 0.56, tx + H * 0.18, ty - H * 0.38);
-      ctx.bezierCurveTo(tx + H * 0.42, ty - H * 0.22, tx + H * 0.3, ty + H * 0.04, tx + H * 0.02, ty + H * 0.08);
-      ctx.quadraticCurveTo(tx, ty + H * 0.12, tx - H * 0.02, ty + H * 0.04);
-      ctx.closePath();
+      if (kind === 0) {
+        ctx.ellipse(tx, ty - H * 0.16, H * 0.26, H * 0.22, 0, 0, TAU);
+      } else if (kind === 1) {
+        ctx.moveTo(tx, ty + H * 0.02);
+        ctx.bezierCurveTo(tx - flip * H * 0.46, ty - H * 0.08, tx - flip * H * 0.22, ty - H * 0.5, tx, ty - H * 0.28);
+        ctx.bezierCurveTo(tx + flip * H * 0.22, ty - H * 0.5, tx + flip * H * 0.46, ty - H * 0.08, tx, ty + H * 0.02);
+        ctx.closePath();
+      } else {
+        ctx.moveTo(tx + H * 0.2, ty - H * 0.02);
+        ctx.arc(tx, ty - H * 0.02, H * 0.2, 0, TAU);
+        ctx.moveTo(tx + flip * H * 0.1 + H * 0.15, ty - H * 0.26);
+        ctx.arc(tx + flip * H * 0.1, ty - H * 0.26, H * 0.15, 0, TAU);
+      }
     };
-    paint(ctx, crown, col(color), { ink: iw, glaze: col(color, -18), edge: Math.max(2, H * 0.04) });
-    ctx.fillStyle = col(shade(color, 18), 0, 0, 0.85);
-    ctx.beginPath();
-    ctx.ellipse(tx - H * 0.08, ty - H * 0.26, H * 0.07, H * 0.04, -0.55, 0, TAU);
-    ctx.fill();
+    paint(ctx, crown, col(color), { ink: iw });
   }
 
   function blossom(ctx, x, y, r, hue, iw) {
