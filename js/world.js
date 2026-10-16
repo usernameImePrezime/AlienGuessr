@@ -1,7 +1,7 @@
 (function (G) {
-  const COUNTS = { easy: 6, medium: 12, hard: 20 };
+  const COUNTS = { easy: 8, medium: 24, hard: 48 };
   const CONTINENT_COUNTS = { easy: [1, 1], medium: [2, 3], hard: [3, 4] };
-  const PROVINCE_COUNTS = { easy: [2, 2], medium: [2, 3], hard: [2, 4] };
+  const PROVINCE_COUNTS = { easy: [2, 2], medium: [2, 3], hard: [3, 4] };
   const VEGETATION = ["mushroom", "palm", "tentacle", "crystal", "eyestalk", "bulb", "spiralfern", "balloon"];
   const ALIENS = ["yellow", "green", "blue", "pink", "mixed"];
   const HEIGHTS = ["short", "medium", "tall"];
@@ -253,7 +253,7 @@
   function splitCounts(total, sizes) {
     if (sizes.length === 1) return [total];
     const sum = sizes.reduce((a, b) => a + b, 0) || 1;
-    const out = sizes.map((s) => clamp(Math.round((total * s) / sum), 2, 9));
+    const out = sizes.map((s) => clamp(Math.round((total * s) / sum), 2, 20));
     let guard = 0;
     while (out.reduce((a, b) => a + b, 0) !== total && guard++ < 100) {
       const diff = out.reduce((a, b) => a + b, 0) - total;
@@ -263,7 +263,7 @@
         if (!pickDown) break;
         out[pickDown.i] -= 1;
       } else {
-        const pickUp = order.reverse().find((o) => out[o.i] < 9);
+        const pickUp = order.reverse().find((o) => out[o.i] < 20);
         if (!pickUp) break;
         out[pickUp.i] += 1;
       }
@@ -541,8 +541,12 @@
         province.areaCode = `${country.digit}${digits[j % 10]}`;
         province.plateLetter = plateLetters[j % plateLetters.length];
         province.flag = { emblem: emblems[j], color: emblemColors[Math.floor(rand() * emblemColors.length)] };
+        const span = Math.max(1, country.provinceIds.length - 1);
+        const code = String(Math.round((j * 99) / span)).padStart(2, "0");
+        province.code = code;
         province.profile = {
           ...country.profile,
+          code,
           areaCode: tier >= 2 ? province.areaCode : null,
           plateLetter: tier >= 2 ? province.plateLetter : null,
           provinceFlag: tier >= 2 ? province.flag : null,
@@ -557,12 +561,17 @@
     return lo + Math.floor(G.mulberry32(G.hashSeed(`${seed}|${difficulty}|continents`))() * (hi - lo + 1));
   }
 
-  function createPlanet(seed, difficulty) {
+  function createPlanet(seed, difficulty, planetId) {
     const terrain = G.makeTerrain(seed, continentCount(seed, difficulty));
     for (let salt = 0; salt < 12; salt++) {
       const keyed = salt === 0 ? seed : `${seed}#${salt}`;
       const planet = tryGenerate(keyed, difficulty, terrain);
-      if (planet) return finishPlanet(planet, seed, terrain);
+      if (planet) {
+        const done = finishPlanet(planet, seed, terrain);
+        done.kit = G.PLANETS ? G.PLANETS.get(planetId) : null;
+        if (G.PLANETS && done.kit) G.PLANETS.tint(done);
+        return done;
+      }
     }
     throw new Error(`Could not build planet ${seed}`);
   }
@@ -573,7 +582,39 @@
     planet.network = G.buildNetwork(planet);
     planet.roads = planet.network.roads;
     planet.towns = planet.network.towns;
+    planet.spots = G.buildSpots ? G.buildSpots(planet) : [];
+    planet.wonders = placeWonders(planet);
     return planet;
+  }
+
+  function placeWonders(planet) {
+    const wants = [
+      { id: "mound", biome: "dry" },
+      { id: "spine", biome: "highland" },
+      { id: "tilt", biome: "meadow" },
+      { id: "ring", biome: "meadow" },
+      { id: "gate", biome: "beach" },
+    ];
+    const t = planet.terrain;
+    const buckets = {};
+    for (let y = 8; y < t.N - 8; y += 4) {
+      for (let x = 8; x < t.N - 8; x += 4) {
+        const wx = ((x + 0.5) / t.N) * 1000;
+        const wy = ((y + 0.5) / t.N) * 1000;
+        if (G.waterAt(t, wx, wy) === G.WATER.SEA) continue;
+        const biome = G.biomeAt(t, wx, wy);
+        (buckets[biome] = buckets[biome] || []).push({ x: wx, y: wy });
+      }
+    }
+    const used = [];
+    const rand = G.mulberry32(G.hashSeed(`${planet.seed}|wonders`));
+    return wants.map((wonder) => {
+      const pool = (buckets[wonder.biome] || []).filter((p) => used.every((u) => Math.hypot(u.x - p.x, u.y - p.y) > 140));
+      const bag = pool.length ? pool : (buckets[wonder.biome] || buckets.meadow || buckets.dry || [{ x: 500, y: 500 }]);
+      const pick = bag[Math.floor(rand() * bag.length)] || { x: 500, y: 500 };
+      used.push(pick);
+      return { id: wonder.id, x: Math.round(pick.x), y: Math.round(pick.y) };
+    });
   }
 
   function placeAt(planet, x, y) {
@@ -596,6 +637,30 @@
   }
 
   function pickLocation(planet, rng) {
+    const spots = planet.spots;
+    if (spots && spots.length) {
+      if (!planet.spotOrder) {
+        const order = spots.map((_, i) => i);
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          const swap = order[i];
+          order[i] = order[j];
+          order[j] = swap;
+        }
+        planet.spotOrder = order;
+        planet.spotCursor = 0;
+      }
+      const spot = spots[planet.spotOrder[planet.spotCursor % planet.spotOrder.length]];
+      planet.spotCursor += 1;
+      return {
+        regionId: spot.regionId,
+        x: spot.x,
+        y: spot.y,
+        heading: spot.heading + (rng() < 0.5 ? Math.PI : 0),
+        road: spot.road,
+        along: spot.along,
+      };
+    }
     const spot = G.randomRoadSpot(planet, rng);
     const region = nearestRegion(planet, spot.x, spot.y);
     return {

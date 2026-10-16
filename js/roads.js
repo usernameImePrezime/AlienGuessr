@@ -209,7 +209,7 @@
         const index = r * GR + c;
         if (grid.blocked[index] || grid.river[index]) continue;
         const e = grid.elev[index];
-        if (e > 0.62 || grid.slope[index] > 0.06) continue;
+        if (e > 0.78 || grid.slope[index] > 0.08) continue;
         const score = (1 - e) * 0.6 + grid.nearWater[index] * 0.7 + (0.06 - grid.slope[index]) * 6 + rand() * 0.45;
         candidates.push({ index, x: (c + 0.5) * CELL, y: (r + 0.5) * CELL, score });
       }
@@ -228,7 +228,8 @@
       const pick = candidates.find((cand) => planet.regions[cand.regionId].countryId === country.id && clear(cand, 60));
       if (pick) add(pick, "city");
     });
-    const cap = Math.min(46, planet.countries.length + planet.regions.length);
+    const townCap = planet.difficulty === "hard" ? 80 : planet.difficulty === "medium" ? 60 : 46;
+    const cap = Math.min(townCap, planet.countries.length + planet.regions.length);
     planet.regions.forEach((region) => {
       if (towns.length >= cap || towns.some((town) => town.regionId === region.id)) return;
       const pick = candidates.find((cand) => cand.regionId === region.id && clear(cand, 52));
@@ -451,7 +452,39 @@
     return { kind: "wild", town: best, dist: bestDist };
   }
 
+  function buildSpots(planet) {
+    const target = { easy: 1000, medium: 5000, hard: 10000 }[planet.difficulty] || 1000;
+    const roads = planet.roads || [];
+    let total = 0;
+    roads.forEach((road) => {
+      total += road.length;
+    });
+    if (!roads.length || total < 1) return [];
+    const spots = [];
+    let step = Math.max(0.35, total / target);
+    for (let pass = 0; pass < 4 && spots.length < target; pass++) {
+      roads.forEach((road, roadIndex) => {
+        for (let along = 0.4 + pass * step * 0.37; along < road.length - 0.3 && spots.length < target; along += step) {
+          const point = pointAlong(road, along);
+          if (G.waterAt(planet.terrain, point.x, point.y) !== 0) continue;
+          const region = G.nearestRegion(planet, point.x, point.y);
+          spots.push({
+            regionId: region.id,
+            x: Math.round(point.x * 100) / 100,
+            y: Math.round(point.y * 100) / 100,
+            heading: point.angle,
+            road: roadIndex,
+            along,
+          });
+        }
+      });
+      step *= 0.55;
+    }
+    return spots;
+  }
+
   G.buildNetwork = buildNetwork;
+  G.buildSpots = buildSpots;
   G.randomRoadSpot = randomRoadSpot;
   G.roadAhead = roadAhead;
   G.settlementAt = settlementAt;

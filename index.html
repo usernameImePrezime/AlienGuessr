@@ -27,12 +27,19 @@
         <p class="eyebrow">Interdimensional geography, probably legal</p>
         <h1 class="logo"><span>Probe</span><span>Drop</span></h1>
         <p class="lede">We beam you to a random road on a weird planet. Look around without moving, then guess where you are. Then we do it again. Forever.</p>
-        <p id="diff-hint" class="quiet">One continent, six countries. The sky and the color of the locals give it away.</p>
+        <p id="diff-hint" class="quiet">One continent, eight countries, a thousand drops. A flag or a sign is close. The sky and the color of the locals give it away.</p>
+
+        <div class="planets" role="group" aria-label="Planet">
+          <button type="button" class="planet is-selected" data-planet="candy"><strong>World 1</strong></button>
+          <button type="button" class="planet" data-planet="suburb"><strong>World 2</strong></button>
+          <button type="button" class="planet" data-planet="dust"><strong>World 3</strong></button>
+          <button type="button" class="planet" data-planet="jelly"><strong>World 4</strong></button>
+        </div>
 
         <div class="difficulty" role="group" aria-label="Difficulty">
-          <button type="button" class="diff is-selected" data-difficulty="easy"><strong>Easy</strong><small>1 continent · 6 countries</small></button>
-          <button type="button" class="diff" data-difficulty="medium"><strong>Medium</strong><small>2-3 continents · 12 countries</small></button>
-          <button type="button" class="diff" data-difficulty="hard"><strong>Hard</strong><small>3-4 continents · 20 countries</small></button>
+          <button type="button" class="diff is-selected" data-difficulty="easy"><strong>Easy</strong><small>1 continent · 8 countries · 1000 drops</small></button>
+          <button type="button" class="diff" data-difficulty="medium"><strong>Medium</strong><small>2-3 continents · 24 countries · 5000 drops</small></button>
+          <button type="button" class="diff" data-difficulty="hard"><strong>Hard</strong><small>3-4 continents · 48 countries · 10000 drops</small></button>
         </div>
 
         <label class="seed-field">
@@ -213,6 +220,7 @@
   <script src="js/score.js"></script>
   <script src="js/terrain.js"></script>
   <script src="js/metas.js"></script>
+  <script src="js/planets.js"></script>
   <script src="js/world.js"></script>
   <script src="js/roads.js"></script>
   <script src="js/assets.js"></script>

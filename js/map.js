@@ -142,6 +142,22 @@
     }
     if (view.zoom > 4) return;
     const grow = 1 + (Math.min(view.zoom, 3) - 1) * 0.32;
+    if (planet.difficulty === "hard" && view.zoom > 1.7) {
+      planet.regions.forEach((region) => {
+        if (!region.code) return;
+        const p = mapToCanvas(region.site, box);
+        ctx.save();
+        ctx.font = `${7.5 * unit}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,248,230,0.9)";
+        ctx.strokeStyle = "rgba(58, 24, 48, 0.85)";
+        ctx.lineWidth = 3;
+        ctx.strokeText(region.code, p.x, p.y + 11 * unit);
+        ctx.fillStyle = "#4a2144";
+        ctx.fillText(region.code, p.x, p.y + 11 * unit);
+        ctx.restore();
+      });
+    }
     labels.countries.slice().sort((a, b) => b.area - a.area).forEach((label) => {
       if (!label.area) return;
       const p = mapToCanvas(label, box);

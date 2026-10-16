@@ -1313,6 +1313,36 @@
     });
 
     planet.towns.slice().sort((a, b) => a.y - b.y).forEach((town) => townIcon(ctx, town, rand));
+    (planet.wonders || []).forEach((wonder) => {
+      const x = wonder.x * K;
+      const y = wonder.y * K;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = "#f6e7a8";
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (wonder.id === "mound") {
+        ctx.moveTo(-16, 10);
+        ctx.lineTo(-6, -12);
+        ctx.lineTo(6, -12);
+        ctx.lineTo(16, 10);
+      } else if (wonder.id === "spine") {
+        ctx.rect(-18, -4, 36, 10);
+      } else if (wonder.id === "tilt") {
+        ctx.rotate(-0.18);
+        ctx.rect(-6, -18, 12, 28);
+      } else if (wonder.id === "ring") {
+        ctx.arc(0, 2, 12, 0, TAU);
+      } else {
+        ctx.rect(-16, -14, 6, 24);
+        ctx.rect(10, -14, 6, 24);
+        ctx.rect(-18, -16, 36, 6);
+      }
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    });
 
     const doodles = [
       (x, y) => seaMonster(ctx, x, y, 40),

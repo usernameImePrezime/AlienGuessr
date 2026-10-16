@@ -1,7 +1,7 @@
 (function (G) {
   const INK = "#1b1033";
   const TAU = Math.PI * 2;
-  const IW = 7;
+  const IW = 11;
   const W = 400;
   const H = 470;
   const GY = 450;
@@ -410,13 +410,11 @@
       ctx.arc(x + lookX, y + r * 0.12, r * 0.64, 0, TAU);
       ctx.fill();
     }
+    pen(ctx, () => ctx.ellipse(x, y, rx * big, ry * big, 0, 0, TAU), Math.max(6, r * 0.22));
     if (style !== "yellow" && style !== "psycho_light") {
       ctx.fillStyle = "#fff";
       ctx.beginPath();
-      ctx.arc(x + lookX - r * 0.22, y - r * 0.16, r * 0.2, 0, TAU);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x + lookX + r * 0.2, y + r * 0.32, r * 0.09, 0, TAU);
+      ctx.arc(x + lookX - r * 0.18, y - r * 0.22, r * 0.16, 0, TAU);
       ctx.fill();
     }
     if (style === "angry_blue") {
@@ -451,12 +449,7 @@
       G.wc.wash(ctx, () => ctx.ellipse(x, y - hw * 0.1, hw * 1.2, hw * 0.3, 0, 0, TAU), "#2a0b22", { alpha: 0.6, flat: true, bleed: 0.4 });
       if (tongue) {
         const t = () => ctx.ellipse(x + hw * 0.15, y + hw * 0.6, hw * 0.55, hw * 0.36, 0, 0, TAU);
-        G.wc.wash(ctx, t, "#ff6f91", { mottle: 0.4, bleed: 0.5 });
-        pen(ctx, () => {
-          ctx.moveTo(x + hw * 0.15, y + hw * 0.36);
-          ctx.lineTo(x + hw * 0.15, y + hw * 0.62);
-        }, 3);
-        G.wc.bloom(ctx, x - hw * 0.05, y + hw * 0.48, hw * 0.1, "#ffd0dc", 0.8);
+        G.wc.wash(ctx, t, "#ff6f91", { flat: true });
       }
       ctx.restore();
       pen(ctx, build, 6.5);
@@ -767,7 +760,7 @@
 
     const faceY = top + bh * (kind === "C" ? 0.26 : kind === "B" ? 0.34 : 0.36);
     const faceW = Math.min(bw, 150);
-    const er = faceW * 0.13;
+    const er = faceW * 0.2;
     const layouts = {
       1: [[0, 0, 1.45]],
       2: [[-0.26, 0, 1], [0.26, 0, 1]],
@@ -780,13 +773,7 @@
     const mouthY = faceY + er * (species.eyes === 1 ? 2.2 : 1.9);
     if (variant !== 1) {
       [-1, 1].forEach((s) => {
-        G.wc.wash(ctx, () => ctx.ellipse(CX + s * faceW * 0.36, mouthY - er * 0.2, er * 0.55, er * 0.32, 0, 0, TAU), "rgba(255, 70, 130, 0.42)", { flat: true, bleed: 0.7 });
-        pen(ctx, () => {
-          for (let k = -1; k <= 1; k++) {
-            ctx.moveTo(CX + s * faceW * 0.36 + k * er * 0.22 - 2, mouthY - er * 0.12);
-            ctx.lineTo(CX + s * faceW * 0.36 + k * er * 0.22 + 2, mouthY - er * 0.3);
-          }
-        }, 2);
+        G.wc.wash(ctx, () => ctx.ellipse(CX + s * faceW * 0.34, mouthY - er * 0.15, er * 0.42, er * 0.22, 0, 0, TAU), "rgba(255, 120, 160, 0.55)", { flat: true });
       });
     }
     drawMouth(ctx, species.mouth, CX, mouthY, faceW * 0.42, tint);

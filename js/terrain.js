@@ -90,7 +90,7 @@
         const wy = ny + (fbm(nx * 2.2, ny * 2.2 + 7.7, ns + 23, 4) - 0.5) * 0.7;
         const continent = fbm(wx * 2.6, wy * 2.6, ns);
         const detail = fbm(wx * 7.5 + 1.7, wy * 7.5, ns + 101, 4);
-        const mountainMask = smoothstep(0.42, 0.7, fbm(wx * 1.8 + 9, wy * 1.8, ns + 303, 3));
+        const mountainMask = smoothstep(0.5, 0.74, fbm(wx * 1.05 + 9, wy * 1.05, ns + 303, 3));
         const ridge = ridged(wx * 4.2 + 2.4, wy * 4.2, ns + 211);
         const edge = Math.min(nx, 1 - nx, ny, 1 - ny);
         const falloff = smoothstep(0, 0.16, edge);
@@ -111,7 +111,7 @@
         }
         const index = y * N + x;
         height[index] = h;
-        moist[index] = fbm(nx * 3.4 + 5, ny * 3.4, ns + 509, 4);
+        moist[index] = fbm(nx * 1.45 + 5, ny * 1.45, ns + 509, 3);
       }
     }
     return { height, moist };
@@ -357,12 +357,12 @@
   function biomeOf(elev, moist, water) {
     if (water === SEA) return "sea";
     if (water === LAKE) return "lake";
-    if (elev > 0.8) return "snow";
+    if (elev > 0.72) return "snow";
     if (elev > 0.6) return "rock";
-    if (elev > 0.42) return "highland";
+    if (elev > 0.55) return "highland";
     if (elev < 0.035) return "beach";
-    if (moist > 0.56) return "jungle";
-    if (moist < 0.4) return "dry";
+    if (moist > 0.52) return "jungle";
+    if (moist < 0.46) return "dry";
     return "meadow";
   }
 

@@ -2,6 +2,7 @@
   const $ = (id) => document.getElementById(id);
   let match = null;
   let difficulty = "easy";
+  let planetId = "candy";
   const photoCache = { key: "", canvas: null };
 
   const screens = {
@@ -14,9 +15,9 @@
   }
 
   function difficultyHint(level) {
-    if (level === "medium") return "A few continents, twelve countries. Bollards, plates and road lines matter. A web domain is shared by two countries.";
-    if (level === "hard") return "Up to four continents, twenty countries. The web domain only marks the continent: read poles, phone codes and km markers.";
-    return "One continent, six countries. The sky and the color of the locals give it away.";
+    if (level === "medium") return "Two or three continents, twenty-four countries, five thousand drops. The clue is often farther down the road. A web domain is shared by two countries.";
+    if (level === "hard") return "Up to four continents, forty-eight countries, ten thousand drops. A post shows a code from 00 to 99. Match it to the tiny number on the map.";
+    return "One continent, eight countries, a thousand drops. A flag or a sign is close. The sky and the color of the locals give it away.";
   }
 
   function placeName(place) {
@@ -81,7 +82,7 @@
     document.body.classList.add("is-loading");
     await G.assetsReady;
     await new Promise((resolve) => setTimeout(resolve, 30));
-    match = G.createMatch(seed, difficulty, mode);
+    match = G.createMatch(seed, difficulty, mode, planetId);
     G.buildAtlas(match.planet);
     G.mapView.reset(false);
     photoCache.key = "";
@@ -236,6 +237,7 @@
     url.searchParams.set("seed", match.seed);
     url.searchParams.set("diff", match.difficulty);
     url.searchParams.set("mode", match.mode);
+    url.searchParams.set("planet", match.planetId || planetId);
     return url.href;
   }
 
@@ -244,6 +246,8 @@
       return [hit.spec.phone, hit.spec.domain].filter(Boolean).join(" · ") || hit.spec.word || "Sign";
     }
     if (hit.kind === "km") return `Km ${hit.spec.number}`;
+    if (hit.kind === "code") return hit.spec.code;
+    if (hit.kind === "plaque") return "Left for Earth";
     if (hit.kind === "plate") return hit.spec.text;
     return "Road sign";
   }
@@ -326,6 +330,17 @@
     draw();
   }
 
+  function selectPlanet(id) {
+    planetId = G.PLANETS && G.PLANETS.get(id) ? G.PLANETS.get(id).id : "candy";
+    document.querySelectorAll(".planet").forEach((item) => {
+      item.classList.toggle("is-selected", item.dataset.planet === planetId);
+    });
+  }
+
+  document.querySelectorAll(".planet").forEach((button) => {
+    button.addEventListener("click", () => selectPlanet(button.dataset.planet));
+  });
+
   document.querySelectorAll(".diff").forEach((button) => {
     button.addEventListener("click", () => {
       difficulty = button.dataset.difficulty;
@@ -341,6 +356,7 @@
   $("study-btn").addEventListener("click", () => start("study"));
   $("daily-btn").addEventListener("click", () => {
     $("seed-input").value = G.dailySeed();
+    selectPlanet(G.PLANETS.dailyId());
     start("drop");
   });
   $("confirm-btn").addEventListener("click", lockIn);
@@ -435,8 +451,11 @@
       });
       $("diff-hint").textContent = difficultyHint(diff);
     }
-    if (params.get("daily") === "1") $("seed-input").value = G.dailySeed();
-    else if (params.get("seed")) $("seed-input").value = params.get("seed");
+    if (params.get("planet")) selectPlanet(params.get("planet"));
+    if (params.get("daily") === "1") {
+      $("seed-input").value = G.dailySeed();
+      selectPlanet(G.PLANETS.dailyId());
+    } else if (params.get("seed")) $("seed-input").value = params.get("seed");
     if (params.get("daily") === "1") return "drop";
     const mode = params.get("mode");
     if (mode === "play" || mode === "study" || mode === "drop") return mode;

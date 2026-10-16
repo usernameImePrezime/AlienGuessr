@@ -353,11 +353,52 @@ button {
   }
 }
 
+.planets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.planet {
+  border: 3px solid var(--ink);
+  border-radius: 18px 22px 16px 24px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--paper);
+  padding: 10px 6px;
+  display: grid;
+  gap: 2px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.planet strong {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+
+.planet small {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.planet.is-selected {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
 .difficulty {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   width: 100%;
+}
+
+@media (max-width: 720px) {
+  .planets {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .diff {

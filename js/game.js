@@ -1,11 +1,12 @@
 (function (G) {
-  function createMatch(seed, difficulty, mode) {
-    const planet = G.createPlanet(seed, difficulty);
+  function createMatch(seed, difficulty, mode, planetId) {
+    const planet = G.createPlanet(seed, difficulty, planetId);
     const rng = G.mulberry32(G.hashSeed(`${seed}|locations|${difficulty}|${mode}`));
     const match = {
       seed,
       difficulty,
       mode,
+      planetId: planet.kit ? planet.kit.id : "candy",
       planet,
       rng,
       rounds: [],
@@ -40,7 +41,8 @@
 
   function photoKey(match) {
     const round = currentRound(match);
-    return `${match.seed}|photo|${match.difficulty}|${round.x.toFixed(2)}|${round.y.toFixed(2)}`;
+    const kit = match.planetId || (match.planet.kit && match.planet.kit.id) || "candy";
+    return `${match.seed}|photo|${match.difficulty}|${kit}|${round.x.toFixed(2)}|${round.y.toFixed(2)}`;
   }
 
   function photoRng(match) {

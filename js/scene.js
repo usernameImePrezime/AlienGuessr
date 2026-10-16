@@ -176,8 +176,10 @@
   function drawSky(ctx, cam, pal, profile, rng, U) {
     const { W, y0 } = cam;
     const g = ctx.createLinearGradient(0, 0, 0, y0);
+    const glow = { h: pal.sky1.h, s: Math.max(18, pal.sky1.s * 0.45), l: Math.min(94, pal.sky1.l + 16) };
     g.addColorStop(0, col(pal.sky0));
-    g.addColorStop(1, col(pal.sky1));
+    g.addColorStop(0.55, col(pal.sky1));
+    g.addColorStop(1, col(mixC(pal.sky1, glow, 0.7)));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, y0 + 4);
     void profile;
@@ -244,11 +246,11 @@
     const n = 2 + Math.floor(rng() * 2);
     const color = mixC(pal.sky1, { h: 220, s: 28, l: 96 }, 0.72);
     for (let i = 0; i < n; i++) {
-      const cx = cam.W * (0.14 + rng() * 0.72);
-      const cy = cam.y0 * (0.16 + rng() * 0.38);
-      const w = (110 + rng() * 80) * U * (0.62 + cy / cam.y0);
-      const h = w * 0.34;
-      cloudShape(ctx, cx, cy, w, h, color, 1.2 * U);
+      const cx = cam.W * (0.16 + rng() * 0.68);
+      const cy = cam.y0 * (0.2 + rng() * 0.28);
+      const w = cam.W * (0.28 + rng() * 0.12);
+      const h = w * 0.36;
+      cloudShape(ctx, cx, cy, w, h, color, 2.2 * U);
     }
   }
 
@@ -264,6 +266,14 @@
       ctx.closePath();
     };
     paint(ctx, path, col(color), { ink: Math.max(2, iw * 1.8) });
+    paint(ctx, () => {
+      ctx.moveTo(cx - w * 0.32, cy + h * 0.02);
+      ctx.quadraticCurveTo(cx - w * 0.1, cy + h * 0.22, cx + w * 0.08, cy + h * 0.06);
+      ctx.quadraticCurveTo(cx + w * 0.28, cy + h * 0.2, cx + w * 0.34, cy + h * 0.02);
+      ctx.quadraticCurveTo(cx, cy - h * 0.08, cx - w * 0.32, cy + h * 0.02);
+      ctx.closePath();
+    }, col(shade(color, -12)), { ink: Math.max(1.4, iw) });
+    paint(ctx, () => ctx.ellipse(cx - w * 0.12, cy - h * 0.22, w * 0.1, h * 0.16, -0.4, 0, TAU), col(shade(color, 8)), { ink: Math.max(1.2, iw * 0.8) });
   }
 
   const STAR_PATTERNS = {
@@ -509,6 +519,25 @@
       ctx.moveTo(xs[0], ys[0]);
       smoothPath(ctx, xs, ys);
     }, INK, Math.max(1.6, opts.ink * U));
+    if (opts.trees) ridgeTrees(ctx, cam, xs, ys, color, opts.trees, U);
+  }
+
+  function ridgeTrees(ctx, cam, xs, ys, color, count, U) {
+    const n = Math.max(4, Math.min(7, Math.round(count / 2)));
+    const leaf = { h: (color.h + 48) % 360, s: Math.min(82, color.s + 24), l: Math.max(34, color.l - 6) };
+    const trunk = { h: 26, s: 46, l: 32 };
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor((0.06 + ((i + 0.5) / n) * 0.88) * (xs.length - 1));
+      const y = ys[idx];
+      if (y > cam.y0 - 12 * U) continue;
+      const h = (28 + (i % 4) * 11) * U;
+      let k = i * 19 + idx * 3 + 7;
+      const rand = () => {
+        k = (k * 16807 + 11) % 2147483647;
+        return k / 2147483647;
+      };
+      P.tree(ctx, xs[idx], y + 4 * U, h / 5.4, 5.4, leaf, trunk, rand, U);
+    }
   }
 
   function drawSea(ctx, cam, hz, pal, rng, U) {
@@ -587,9 +616,28 @@
 
   // ---------- ground ----------
 
+  function drawMounds(ctx, cam, pal) {
+    const y = cam.y0 + 6;
+    const bumps = [
+      { x: cam.W * 0.16, w: cam.W * 0.22, h: cam.y0 * 0.28, c: shade(pal.ground, -14) },
+      { x: cam.W * 0.78, w: cam.W * 0.3, h: cam.y0 * 0.2, c: shade(pal.ground, -8) },
+      { x: cam.W * 0.48, w: cam.W * 0.16, h: cam.y0 * 0.12, c: shade(pal.ground, -4) },
+    ];
+    bumps.forEach((b) => {
+      paint(ctx, () => {
+        ctx.moveTo(b.x - b.w, y);
+        ctx.quadraticCurveTo(b.x - b.w * 0.45, y - b.h * 0.92, b.x, y - b.h);
+        ctx.quadraticCurveTo(b.x + b.w * 0.5, y - b.h * 0.88, b.x + b.w, y);
+        ctx.closePath();
+      }, col(b.c), { ink: Math.max(2, cam.H * 0.0035) });
+    });
+  }
+
   function drawGround(ctx, cam, hz, pal, rng, U) {
     const tops = hz.waterY.map((y) => (y ? Math.min(cam.H, Math.max(y, cam.y0)) : cam.y0));
     const xs = tops.map((_, i) => (i / COLUMNS) * cam.W);
+    const flat = tops.every((t) => Math.abs(t - cam.y0) < 14);
+    if (flat) drawMounds(ctx, cam, pal);
     const build = () => {
       ctx.moveTo(0, cam.H);
       for (let i = 0; i < xs.length; i++) ctx.lineTo(xs[i], tops[i]);
@@ -726,64 +774,13 @@
   function drawRoadDetail(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax, zs, base) {
     const city = kind === "city";
     if (city) {
-      const near = zs.filter((z) => z < 60);
-      ctx.fillStyle = col(base, -18, 0, 0.26);
-      ctx.beginPath();
-      [-0.5, 0.5].forEach((lane) => [-0.38, 0.38].forEach((t) => strip(ctx, cam, road, near, lane * halfW + t - 0.14, lane * halfW + t + 0.14)));
-      ctx.fill();
-      ctx.fillStyle = col(base, -24, 0, 0.18);
-      ctx.beginPath();
-      [-0.5, 0.5].forEach((lane) => [-0.38, 0.38].forEach((t) => strip(ctx, cam, road, near, lane * halfW + t - 0.05, lane * halfW + t + 0.05)));
-      ctx.fill();
-      const own = (profile.drivingSide === "left" ? -1 : 1) * halfW * 0.5;
-      for (let z = 9 + rng() * 4; z < 26; z += 14) {
-        const pts = [[-0.09, z], [0.09, z], [0.09, z + 2.2], [0.3, z + 2.2], [0, z + 3.4], [-0.3, z + 2.2], [-0.09, z + 2.2]].map(([x, zz]) => [own + x, zz]);
-        ctx.save();
-        ctx.fillStyle = "rgba(255, 250, 240, 0.8)";
-        ctx.beginPath();
-        groundPoly(ctx, cam, road, pts);
-        ctx.fill();
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = G.wc.patternFor(ctx, "mottle");
-        ctx.fill();
-        ctx.restore();
-      }
-      [-1, 1].forEach((side) => {
-        ctx.fillStyle = col({ h: 240, s: 8, l: 62 }, 0, 0, 0.85);
-        ctx.beginPath();
-        for (let z = zs[0] + (side > 0 ? 0.6 : 0); z < 50; z += 2.4) {
-          groundPoly(ctx, cam, road, [[side * halfW, z], [side * (halfW + 0.22), z], [side * (halfW + 0.22), z + 1.2], [side * halfW, z + 1.2]]);
-        }
-        ctx.fill();
-        const gz = 5 + rng() * 10;
-        const gx0 = side * (halfW - 0.55);
-        const gx1 = side * (halfW - 0.05);
-        paint(ctx, () => groundPoly(ctx, cam, road, [[gx0, gz], [gx1, gz], [gx1, gz + 0.9], [gx0, gz + 0.9]]), col(base, -22), { ink: inkW(cam.p(0, gz, 0).s, U) * 0.7 });
-        stroke(ctx, () => {
-          for (let k = 1; k < 5; k++) {
-            const a = cam.p(road.x(gz) + gx0 + ((gx1 - gx0) * k) / 5, gz, 0);
-            const b = cam.p(road.x(gz + 0.9) + gx0 + ((gx1 - gx0) * k) / 5, gz + 0.9, 0);
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-          }
-        }, col(base, -30), Math.max(0.6, U * 0.9));
-      });
-      for (let i = 0; i < 2; i++) {
-        const side = rng() < 0.5 ? -1 : 1;
-        let z = 3.5 + rng() * 18;
-        let x = side * (halfW - 0.1);
-        const start = cam.p(road.x(z) + x, z, 0);
-        stroke(ctx, () => {
-          ctx.moveTo(start.x, start.y);
-          for (let k = 0; k < 4; k++) {
-            x -= side * (0.12 + rng() * 0.2);
-            z += 0.35 + rng() * 0.35;
-            const p = cam.p(road.x(z) + x, z, 0);
-            ctx.lineTo(p.x, p.y);
-          }
-        }, col(base, -24, 0, 0.8), Math.max(0.6, U * 0.9));
-      }
+      const own = (profile.drivingSide === "left" ? -1 : 1) * halfW * 0.48;
+      const z = 12;
+      const pts = [[-0.12, z], [0.12, z], [0.12, z + 2.6], [0.38, z + 2.6], [0, z + 4.1], [-0.38, z + 2.6], [-0.12, z + 2.6]].map(([x, zz]) => [own + x, zz]);
+      paint(ctx, () => groundPoly(ctx, cam, road, pts), "#fff6ea", { ink: Math.max(1.6, 1.8 * U) });
+      void rng;
+      void zs;
+      void base;
     } else {
       if (roadCls === "minor") {
         for (let z = 4; z < 22; z += 4) {
@@ -828,41 +825,22 @@
     }
   }
 
-  function centerLine(ctx, cam, road, zs, profile, drng, zMax) {
+  function centerLine(ctx, cam, road, zs, profile, drng, zMax, U) {
     const pattern = profile.linePattern;
     if (pattern === "none") return;
     if (!pattern || pattern === "dashed") {
       const dash = pattern ? G.metaColors.LINE.dashed : col(profile.pathLineColor, 10);
-      for (let z = 3; z < zMax * 0.6; z += 6) {
-        if (z < 30) dryBrush(ctx, cam, road, z, z + 3, -0.08, 0.08, dash, drng, 1);
-        else {
-          ctx.fillStyle = dash;
-          ctx.beginPath();
-          strip(ctx, cam, road, [z, z + 1.5, z + 3], -0.08, 0.08);
-          ctx.fill();
-        }
+      for (let z = 4; z < Math.min(72, zMax * 0.55); z += 9) {
+        paint(ctx, () => strip(ctx, cam, road, [z, z + 0.2, z + 3.6], -0.12, 0.12), dash, { ink: Math.max(1.2, 1.3 * (U || 1)) });
       }
       return;
     }
     const near = zs.filter((z) => z < zMax * 0.7);
-    const offsets = pattern === "double" ? [-0.15, 0.15] : [0];
-    ctx.save();
-    ctx.fillStyle = G.metaColors.LINE[pattern];
-    ctx.globalAlpha = 0.92;
+    const offsets = pattern === "double" ? [-0.22, 0.22] : [0];
+    const ink = Math.max(1.4, 1.5 * (U || 1));
     offsets.forEach((o) => {
-      ctx.beginPath();
-      strip(ctx, cam, road, near, o - 0.07, o + 0.07);
-      ctx.fill();
+      paint(ctx, () => strip(ctx, cam, road, near, o - 0.16, o + 0.16), G.metaColors.LINE[pattern], { ink });
     });
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = G.wc.patternFor(ctx, "mottle");
-    offsets.forEach((o) => {
-      ctx.beginPath();
-      strip(ctx, cam, road, near, o - 0.07, o + 0.07);
-      ctx.fill();
-    });
-    ctx.restore();
   }
 
   function edgeBlades() {}
@@ -883,7 +861,7 @@
     strip(ctx, cam, road, zs.filter((z) => z < zMax * 0.7), -halfW + 0.22, -halfW + 0.34);
     strip(ctx, cam, road, zs.filter((z) => z < zMax * 0.7), halfW - 0.34, halfW - 0.22);
     ctx.fill();
-    centerLine(ctx, cam, road, zs, profile, drng, zMax);
+    centerLine(ctx, cam, road, zs, profile, drng, zMax, U);
     stroke(ctx, () => edgeLine(ctx, cam, road, zs, -halfW), INK, 1.6 * U);
     stroke(ctx, () => edgeLine(ctx, cam, road, zs, halfW), INK, 1.6 * U);
     edgeBlades(ctx, cam, road, zs, halfW + 0.5, pal, U);
@@ -909,88 +887,51 @@
     const farY = cam.p(0, zMax, 0).y;
     if (city) {
       [-1, 1].forEach((side) => {
-        const walk = { h: 18 + side * 8, s: 26, l: 80 };
-        paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 3.2), 0.15), col(walk), { glaze: col(walk, -16), edge: 6 * U });
-        ctx.strokeStyle = col(walk, -22, 0, 0.6);
-        ctx.lineWidth = 0.8 * U;
-        ctx.beginPath();
-        for (let z = zs[0]; z < 60; z += 1.6) {
-          const a = cam.p(road.x(z) + side * halfW, z, 0.15);
-          const b = cam.p(road.x(z) + side * (halfW + 3.2), z, 0.15);
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+        const walk = { h: 28, s: 16, l: 86 };
+        let i = 0;
+        for (let z = zs[0]; z < 52; z += 8) {
+          paint(ctx, () => strip(ctx, cam, road, [z, z + 0.2, z + 7.6], side * halfW, side * (halfW + 3.2), 0.15), i % 2 ? col(walk, -14) : col(walk), { ink: Math.max(1.5, 1.6 * U) });
+          i += 1;
         }
-        ctx.stroke();
       });
       const asphalt = { h: 255, s: 14, l: 44 };
       const g = ctx.createLinearGradient(0, farY, 0, cam.H);
       g.addColorStop(0, col(mixC(asphalt, pal.sky1, 0.4)));
       g.addColorStop(1, col(asphalt, -6));
-      paint(ctx, build, g, { glaze: col(asphalt, -14), edge: 10 * U });
-      ctx.fillStyle = col(asphalt, -10, 0, 0.5);
-      ctx.beginPath();
-      strip(ctx, cam, road, zs, -halfW, -halfW + 0.45);
-      strip(ctx, cam, road, zs, halfW - 0.45, halfW);
-      ctx.fill();
-      ctx.strokeStyle = col(asphalt, -18, 0, 0.75);
-      ctx.lineWidth = Math.max(0.6, 0.9 * U);
+      paint(ctx, build, g, { ink: Math.max(2, 2.2 * U) });
       for (let i = 0; i < 2; i++) {
-        let z = 3.5 + rng() * 22;
-        let x = road.x(z) + (rng() - 0.5) * halfW * 1.6;
-        ctx.beginPath();
-        let p = cam.p(x, z, 0);
-        ctx.moveTo(p.x, p.y);
+        rng();
+        rng();
         for (let k = 0; k < 4; k++) {
-          x += (rng() - 0.5) * 0.9;
-          z += 0.3 + rng() * 0.7;
-          p = cam.p(x, z, 0);
-          ctx.lineTo(p.x, p.y);
+          rng();
+          rng();
         }
-        ctx.stroke();
       }
-      {
-        const z = 6 + rng() * 8;
-        const p = cam.p(road.x(z) + (rng() < 0.5 ? -1 : 1) * halfW * 0.45, z, 0);
-        const rx = p.s * 0.55;
-        const ry = rx * (cam.ch / z);
-        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(asphalt, -16), { ink: inkW(p.s, U) });
-        paint(ctx, () => ctx.ellipse(p.x, p.y, rx * 0.78, ry * 0.78, 0, 0, TAU), col(asphalt, -6), { ink: inkW(p.s, U) * 0.5 });
-        stroke(ctx, () => {
-          for (let k = -2; k <= 2; k++) {
-            ctx.moveTo(p.x + k * rx * 0.25, p.y - ry * 0.7 * Math.sqrt(1 - (k * 0.25) ** 2 / 0.6));
-            ctx.lineTo(p.x + k * rx * 0.25, p.y + ry * 0.7 * Math.sqrt(1 - (k * 0.25) ** 2 / 0.6));
-          }
-        }, col(asphalt, -22), Math.max(0.6, U * 0.8));
-      }
+      rng();
+      rng();
       if (rng() < 0.6) {
-        const z = 4 + rng() * 14;
-        const p = cam.p(road.x(z) + (rng() - 0.5) * halfW, z, 0);
-        const rx = p.s * (0.5 + rng() * 0.5);
-        const ry = rx * (cam.ch / z);
-        paint(ctx, () => ctx.ellipse(p.x, p.y, rx, ry, 0, 0, TAU), col(mixC(pal.sky1, pal.sky0, 0.4), 6), { ink: inkW(p.s, U) * 0.6 });
-        paint(ctx, () => ctx.ellipse(p.x - rx * 0.3, p.y - ry * 0.2, rx * 0.3, ry * 0.2, 0, 0, TAU), "rgba(255,255,255,0.65)");
+        rng();
+        rng();
+        rng();
       }
       const curbPaint = profile.curb && G.metaColors.CURB[profile.curb];
       [-1, 1].forEach((side) => {
         const curb = { h: 240, s: 10, l: 86 };
         paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + 0.22), 0.15), col(curb), { ink: 1.1 * U });
         if (curbPaint) {
-          for (let z = zs[0], k = 0; z < 70; z += 1.2, k++) {
+          let k = 0;
+          for (let z = zs[0]; z < 48; z += 6.5) {
             ctx.fillStyle = curbPaint[k % 2];
             ctx.beginPath();
-            strip(ctx, cam, road, [z, z + 0.6, z + 1.2], side * halfW, side * (halfW + 0.22), 0.15);
+            strip(ctx, cam, road, [z, z + 0.15, z + 6.1], side * halfW, side * (halfW + 0.28), 0.16);
             ctx.fill();
+            k += 1;
           }
         }
         stroke(ctx, () => edgeLine(ctx, cam, road, zs, side * halfW), INK, 1.8 * U);
       });
-      centerLine(ctx, cam, road, zs, profile, drng, zMax);
-      if (rng() < 0.5) {
-        const z0 = 7 + rng() * 6;
-        for (let k = -halfW + 0.4; k < halfW - 0.4; k += 0.9) {
-          dryBrush(ctx, cam, road, z0, z0 + 2.4, k, k + 0.45, "rgb(255, 250, 245)", drng, 0.9);
-        }
-      }
+      centerLine(ctx, cam, road, zs, profile, drng, zMax, U);
+      if (rng() < 0.5) rng();
     } else if (paved) {
       drawPavedRural(ctx, cam, road, zs, halfW, profile, pal, drng, U, zMax, farY, build);
     } else {
@@ -1055,39 +996,29 @@
     const style = profile.pathStyle;
     const c = profile.pathLineColor;
     if (style === "plates") {
-      ctx.save();
-      ctx.globalAlpha = 0.6;
-      G.wc.withLine("pencil", () => G.wc.line(ctx, () => {
-        for (let z = zs[0]; z < Math.min(80, zMax); z += 2.4) {
-          const a = cam.p(road.x(z) - halfW, z, 0);
-          const b = cam.p(road.x(z) + halfW, z, 0);
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-        }
-      }, 1.6 * U));
-      ctx.restore();
-      ctx.fillStyle = col(c, 10, -30, 0.18);
-      for (let z = zs[0]; z < Math.min(80, zMax); z += 4.8) {
-        ctx.beginPath();
-        strip(ctx, cam, road, [z, z + 1.2, z + 2.4], -halfW, halfW);
-        ctx.fill();
+      let i = 0;
+      for (let z = zs[0]; z < Math.min(64, zMax); z += 8) {
+        const pale = { h: c.h, s: Math.max(8, c.s * 0.3), l: Math.min(94, c.l + 30) };
+        const fill = i % 2 ? col(c, -8) : col(pale);
+        paint(ctx, () => strip(ctx, cam, road, [z, z + 0.15, z + 7.7], -halfW * 0.92, halfW * 0.92), fill, { ink: Math.max(1.4, 1.6 * U) });
+        i += 1;
       }
     } else if (style === "glow") {
       ctx.save();
       ctx.shadowColor = col(c, 10);
       ctx.shadowBlur = 10 * U;
       ctx.fillStyle = col(c, 14);
-      for (let z = 3; z < zMax * 0.5; z += 5) {
+      for (let z = 5; z < Math.min(48, zMax * 0.4); z += 11) {
         ctx.beginPath();
-        strip(ctx, cam, road, [z, z + 1, z + 2.2], -0.12, 0.12);
+        strip(ctx, cam, road, [z, z + 0.4, z + 4.2], -0.22, 0.22);
         ctx.fill();
       }
       ctx.restore();
     } else if (style === "rails") {
       ctx.strokeStyle = col({ h: 30, s: 30, l: 40 }, 0, 0, 0.7);
-      ctx.lineWidth = 1.2 * U;
+      ctx.lineWidth = 2.4 * U;
       ctx.beginPath();
-      for (let z = zs[0]; z < 40; z += 1.1) {
+      for (let z = zs[0]; z < 36; z += 3.4) {
         const a = cam.p(road.x(z) - halfW * 0.7, z, 0);
         const b = cam.p(road.x(z) + halfW * 0.7, z, 0);
         ctx.moveTo(a.x, a.y);
@@ -1280,7 +1211,14 @@
     return { style: profile.plate, text: profile.plateLetter ? `${profile.plateLetter}·${digits}` : digits };
   }
 
-  function addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, loc) {
+  function placeBand(loc, difficulty) {
+    const roll = (G.hashSeed(`${loc.x}|${loc.y}|clue`) % 1000) / 1000;
+    if (difficulty === "easy") return 5 + roll * 4;
+    if (difficulty === "medium") return roll < 0.4 ? 6 + roll * 6 : 14 + roll * 26;
+    return 22 + roll * 24;
+  }
+
+  function addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, loc, difficulty) {
     const city = kind === "city";
     const at = (z, x, y, draw) => queue.push({ z, draw: (ctx) => {
       const p = cam.p(x, z, y || 0);
@@ -1337,9 +1275,10 @@
       }
     }
     if (shown.pole) addPoles(queue, cam, road, halfW, profile, rng, U, rng() < 0.5 ? -1 : 1, city ? 0.5 : 1.25, L);
-    if (shown.sign) {
+    if (shown.sign && difficulty !== "hard") {
+      const band = placeBand(loc, difficulty || "easy");
       for (let t = 0; t < 4; t++) {
-        const z = 7 + rng() * 9;
+        const z = band + t * 1.4;
         const x = road.x(z) + (rng() < 0.5 ? -1 : 1) * (halfW + (city ? 0.6 : 0.9));
         if (L.take(x, z, 0.5, 0.4)) {
           queue.push({ z, draw: (ctx) => {
@@ -1389,9 +1328,10 @@
         queue.push({ z: z0 + 3.5, draw: (ctx) => P.fencePiece(ctx, cam, x, z0, z0 + 7, profile, U) });
       }
     }
-    if (shown.banner && kind !== "wild") {
+    if (shown.banner && kind !== "wild" && difficulty !== "hard") {
+      const band = placeBand(loc, difficulty || "easy");
       for (let t = 0; t < 4; t++) {
-        const z = 8 + rng() * 10;
+        const z = band + t * 1.2;
         const side = rng() < 0.5 ? -1 : 1;
         const x = road.x(z) + side * (halfW + 1.7);
         if (L.take(x, z, 0.5, 0.5)) {
@@ -1401,7 +1341,26 @@
         }
       }
     }
-    if (shown.banner) {
+    if ((difficulty === "easy" || !difficulty) && !shown.sign && !shown.banner) {
+      const z = placeBand(loc, "easy");
+      const x = road.x(z) + halfW + 1.3;
+      at(z, x, 0, (ctx, p) => P.flagpole(ctx, p.x, p.y, p.s, profile.flag, profile.provinceFlag, U, false));
+    }
+    if (difficulty === "hard") {
+      const code = profile.code || "00";
+      const z = 3.4 + ((G.hashSeed(`${loc.x}|${loc.y}|code`) % 1000) / 1000) * 1.2;
+      const side = G.hashSeed(`${loc.x}|code-side`) % 2 ? 1 : -1;
+      const x = road.x(z) + side * (halfW + 0.85);
+      queue.push({
+        z,
+        draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          P.codePost(ctx, p.x, p.y, p.s, code, U);
+          noteHit(cam, p.x - p.s * 0.7, p.y - p.s * 1.7, p.s * 1.4, p.s * 1.7, "code", { code });
+        },
+      });
+    }
+    if (shown.banner && difficulty !== "hard") {
       const z = 13 + rng() * 10;
       const h = kind === "city" ? 7 : 4.6;
       const xl = road.x(z) - halfW - 0.6;
@@ -1503,7 +1462,7 @@
       }
     }
     addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "wild", L);
-    const base = { jungle: 46, meadow: 26, beach: 18, dry: 10, highland: 16, rock: 10, snow: 8, sea: 14, lake: 14 }[biome] || 20;
+    const base = { jungle: 28, meadow: 18, beach: 14, dry: 10, highland: 12, rock: 9, snow: 7, sea: 10, lake: 10 }[biome] || 14;
     const density = Math.round(base * pal.density);
     for (let i = 0; i < density; i++) {
       const z = 3.2 + Math.pow(rng(), 1.5) * 90;
@@ -1520,8 +1479,8 @@
   }
 
   function addShack(queue, cam, road, halfW, profile, rng, U, z, side, shownBuilding, L) {
-    const width = 4 + rng() * 2.2;
-    const depth = 3.5 + rng() * 1.8;
+    const width = 5.6 + rng() * 2.4;
+    const depth = 4.2 + rng() * 1.6;
     const off = 1.7 + rng() * 2.4;
     const xa = road.x(z) + side * (halfW + off);
     if (L) {
@@ -1575,8 +1534,8 @@
   }
 
   function populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L) {
-    let z = 6 + rng() * 5;
-    const count = 2 + Math.floor(rng() * 4);
+    let z = 4.2 + rng() * 2.2;
+    const count = 3 + Math.floor(rng() * 2);
     for (let i = 0; i < count; i++) {
       addShack(queue, cam, road, halfW, profile, rng, U, z, i % 2 ? 1 : -1, shown.building, L);
       z += 5 + rng() * 9;
@@ -1600,13 +1559,13 @@
     }
     if (rng() < 0.3) addCar(queue, cam, road, halfW, profile, rng, U, 14 + rng() * 30, L);
     addOddities(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, "village", L);
-    for (let i = 0; i < Math.round(26 * pal.density); i++) {
+    for (let i = 0; i < Math.round(16 * pal.density); i++) {
       const pz = 3.2 + Math.pow(rng(), 1.3) * 80;
       const side = rng() < 0.5 ? -1 : 1;
       const off = 1.2 + rng() * 14;
       addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + side * (halfW + off), shown, true, L, off);
     }
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 10; i++) {
       const pz = 60 + rng() * 200;
       addPlant(queue, cam, profile, pal, biome, rng, U, pz, road.x(pz) + (rng() < 0.5 ? -1 : 1) * (halfW + 3 + rng() * 50), shown, false);
     }
@@ -1714,6 +1673,18 @@
         } });
       }
     }
+    for (let i = 0; i < 4; i++) {
+      const z = 4 + rng() * 18;
+      const side = i % 2 ? 1 : -1;
+      const x = road.x(z) + side * (halfW + 0.7);
+      if (!L.take(x, z, 0.45, 0.4)) continue;
+      const hue = { h: rng() * 360, s: 55, l: 58 };
+      queue.push({ z, draw: (ctx) => {
+        const p = cam.p(x, z, 0);
+        if (i % 2) P.barrel(ctx, p.x, p.y, p.s, hue, U);
+        else P.crate(ctx, p.x, p.y, p.s, U);
+      } });
+    }
   }
 
   function drawSkyline(ctx, cam, road, pal, rng, U) {
@@ -1733,6 +1704,23 @@
       const size = (40 + rng() * 60) * U;
       P.ship(ctx, cam.W * (0.08 + rng() * 0.84), cam.y0 * (0.15 + rng() * 0.6), size, name, (rng() - 0.5) * 0.4);
     }
+  }
+
+  function drawFramePlants(ctx, cam, pal, U) {
+    const spots = [
+      { x: cam.W * 0.0, y: cam.H * 1.02, s: 26 * U, plant: pal.plantA, hue: 330 },
+      { x: cam.W * 1.0, y: cam.H * 1.0, s: 30 * U, plant: pal.plantB, hue: 18 },
+    ];
+    spots.forEach((sp, i) => {
+      let k = 80 + i * 13;
+      const rand = () => {
+        k = (k * 48271 + 7) % 2147483647;
+        return k / 2147483647;
+      };
+      P.bush(ctx, sp.x, sp.y, sp.s, 1.7, sp.plant, rand, U);
+      P.flower(ctx, sp.x + (i ? -34 : 34) * U, sp.y - 8 * U, sp.s * 0.42, 1.15, { h: sp.hue, s: 82, l: 66 }, rand, U);
+      P.flower(ctx, sp.x + (i ? -16 : 16) * U, sp.y + 2 * U, sp.s * 0.28, 0.9, { h: (sp.hue + 50) % 360, s: 78, l: 70 }, rand, U);
+    });
   }
 
   function drawForeground(ctx, cam, pal, biome, rng, U) {
@@ -1762,10 +1750,10 @@
     } else if (profile.weather === "dust") {
       ctx.fillStyle = "rgba(240, 200, 140, 0.18)";
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = "rgba(160, 110, 60, 0.5)";
-      for (let i = 0; i < 160; i++) {
+      ctx.fillStyle = "rgba(176, 120, 64, 0.55)";
+      for (let i = 0; i < 14; i++) {
         ctx.beginPath();
-        ctx.arc(rng() * W, rng() * H, (0.6 + rng() * 1.6) * U, 0, TAU);
+        ctx.arc(rng() * W, rng() * H, (3 + rng() * 5) * U, 0, TAU);
         ctx.fill();
       }
     } else if (profile.weather === "spores") {
@@ -1803,6 +1791,11 @@
     try {
       if (hit.kind === "billboard") P.billboard(ctx, W * 0.5, H * 0.96, H * 0.26, hit.spec, U);
       else if (hit.kind === "km") P.kmMarker(ctx, W * 0.5, H * 0.94, H * 0.62, hit.spec.style, hit.spec.number, U * 1.4);
+      else if (hit.kind === "code") P.codePost(ctx, W * 0.5, H * 0.92, H * 0.42, hit.spec.code, U * 1.6);
+      else if (hit.kind === "plaque") {
+        const view = { p: (x, z, y) => ({ x: W * 0.5 + x * 18, y: H * 0.78 - (y || 0) * 18, s: 70 }), W, H };
+        P.wonder(ctx, view, 0, 0, hit.spec.id, U);
+      }
       else if (hit.kind === "plate") P.plate(ctx, W * 0.5, H * 0.5, W * 0.72, hit.spec, U * 2);
       else if (hit.kind === "sign") {
         const S = H / 4.2;
@@ -1892,51 +1885,277 @@
     }
   }
 
+  function kitOf(planet) {
+    return (planet && planet.kit) || (G.PLANETS ? G.PLANETS.get("candy") : null);
+  }
+
+  function wavyBand(ctx, y0, y1, amp, phase, W, H) {
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, y0);
+    for (let x = 0; x <= W; x += 28) {
+      ctx.lineTo(x, y0 + Math.sin(x * 0.012 + phase) * amp);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    void y1;
+  }
+
+  function drawBandedSky(ctx, cam, pal, kit) {
+    const bands = kit && kit.sky ? kit.sky : [pal.sky0, pal.sky1, pal.sky1, pal.sky0];
+    const n = bands.length;
+    for (let i = 0; i < n; i++) {
+      const top = (cam.y0 * i) / n;
+      const bot = i === n - 1 ? cam.y0 + 28 : (cam.y0 * (i + 1)) / n + 18;
+      const color = mixC(bands[i], i % 2 ? pal.sky1 : pal.sky0, 0.22);
+      paint(ctx, () => {
+        ctx.moveTo(0, top);
+        for (let x = 0; x <= cam.W; x += 12) ctx.lineTo(x, top + Math.sin(x * 0.008 + i * 1.3) * 10);
+        ctx.lineTo(cam.W, bot);
+        for (let x = cam.W; x >= 0; x -= 12) ctx.lineTo(x, bot + Math.sin(x * 0.008 + i + 0.6) * 8);
+        ctx.closePath();
+      }, col(color));
+    }
+  }
+
+  function hillY(x, y, amp, phase) {
+    return y - (Math.sin(x * 0.0062 + phase) * amp + Math.sin(x * 0.014 + phase * 1.4) * amp * 0.22);
+  }
+
+  function drawWaveHill(ctx, cam, y, amp, color, phase) {
+    const ink = Math.max(3, cam.H * 0.006);
+    paint(ctx, () => {
+      ctx.moveTo(0, cam.H);
+      ctx.lineTo(0, hillY(0, y, amp, phase));
+      for (let x = 6; x <= cam.W; x += 6) ctx.lineTo(x, hillY(x, y, amp, phase));
+      ctx.lineTo(cam.W, cam.H);
+      ctx.closePath();
+    }, col(color));
+    stroke(ctx, () => {
+      ctx.moveTo(0, hillY(0, y, amp, phase));
+      for (let x = 6; x <= cam.W; x += 6) ctx.lineTo(x, hillY(x, y, amp, phase));
+    }, INK, ink);
+  }
+
+  function drawFlatOrb(ctx, cam, kit, U) {
+    if (!kit || kit.orb === "none") return;
+    const x = cam.W * (kit.orb === "moon" ? 0.72 : 0.22);
+    const y = cam.y0 * 0.28;
+    const r = 28 * U;
+    const fill = kit.orb === "moon" ? { h: 48, s: 20, l: 90 } : { h: 48, s: 80, l: 70 };
+    paint(ctx, () => ctx.arc(x, y, r, 0, TAU), col(fill), { ink: Math.max(3, 2.4 * U) });
+  }
+
+  function drawChunkCloud(ctx, cx, cy, w, h) {
+    const ink = Math.max(2.8, h * 0.09);
+    [
+      [-0.3, 0.06, 0.24, 0.36],
+      [-0.08, -0.18, 0.28, 0.4],
+      [0.16, -0.04, 0.24, 0.34],
+      [0.34, 0.12, 0.18, 0.26],
+      [-0.02, 0.16, 0.2, 0.2],
+      [0.14, 0.2, 0.16, 0.16],
+    ].forEach(([ox, oy, rx, ry]) => {
+      paint(ctx, () => ctx.ellipse(cx + ox * w, cy + oy * h, rx * w, ry * h, 0, 0, TAU), "#f7f8fb");
+    });
+    paint(ctx, () => ctx.ellipse(cx + w * 0.02, cy + h * 0.18, w * 0.34, h * 0.14, 0, 0, TAU), "#c5ceda");
+    paint(ctx, () => {
+      ctx.moveTo(cx - w * 0.5, cy + h * 0.16);
+      ctx.bezierCurveTo(cx - w * 0.54, cy - h * 0.4, cx - w * 0.14, cy - h * 0.78, cx + w * 0.02, cy - h * 0.5);
+      ctx.bezierCurveTo(cx + w * 0.18, cy - h * 0.9, cx + w * 0.5, cy - h * 0.22, cx + w * 0.5, cy + h * 0.14);
+      ctx.bezierCurveTo(cx + w * 0.36, cy + h * 0.5, cx - w * 0.18, cy + h * 0.52, cx - w * 0.5, cy + h * 0.16);
+      ctx.closePath();
+    }, "rgba(0,0,0,0)", { ink });
+  }
+
+  function drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax) {
+    const far = Math.min(70, zMax);
+    const zs = roadSamples(cam, far);
+    const shoulder = !kit ? 0.85 : kit.shoulder === "lawn" ? 1.25 : kit.shoulder === "pier" ? 1.35 : 0.8;
+    const shoulderColor = !kit ? pal.ground
+      : kit.shoulder === "lawn" ? shade(pal.plantA, 6)
+      : kit.shoulder === "dust" ? shade(pal.ground, 8)
+      : kit.shoulder === "pier" ? { h: 28, s: 36, l: 58 }
+      : { h: 36, s: 16, l: 84 };
+    const ink = Math.max(2.6, 2.2 * U);
+    [-1, 1].forEach((side) => {
+      paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + shoulder), 0.04), col(shoulderColor), { ink });
+    });
+    if (kit && kit.shoulder === "pier") {
+      const water = { h: 196, s: 48, l: 52 };
+      [-1, 1].forEach((side) => {
+        paint(ctx, () => strip(ctx, cam, road, zs, side * (halfW + shoulder), side * (halfW + shoulder + 14), 0.02), col(water), { ink });
+      });
+      for (let z = zs[0], i = 0; z < 40; z += 6.5, i += 1) {
+        [-1, 1].forEach((side) => {
+          paint(ctx, () => strip(ctx, cam, road, [z, z + 0.2, z + 6], side * halfW, side * (halfW + shoulder), 0.05), i % 2 ? col(shoulderColor, -10) : col(shoulderColor, 6), { ink: Math.max(1.6, 1.4 * U) });
+        });
+      }
+    }
+    const asphalt = mixC(profile.pathColor || { h: 230, s: 12, l: 46 }, kit ? kit.road : pal.ground, 0.45);
+    paint(ctx, () => strip(ctx, cam, road, zs, -halfW, halfW), col(asphalt), { ink: ink + 0.6 });
+    const mark = profile.pathLineColor || { h: 50, s: 80, l: 62 };
+    const pattern = profile.linePattern;
+    if (pattern !== "none") {
+      if (pattern === "double") {
+        [-0.22, 0.22].forEach((o) => {
+          paint(ctx, () => strip(ctx, cam, road, zs.filter((z) => z < 55), o - 0.08, o + 0.08), col(mark), { ink: Math.max(1.5, 1.3 * U) });
+        });
+      } else if (!pattern || pattern === "dashed") {
+        for (let z = 5; z < 55; z += 8) {
+          paint(ctx, () => strip(ctx, cam, road, [z, z + 0.15, z + 3.2], -0.1, 0.1), col(mark), { ink: Math.max(1.5, 1.3 * U) });
+        }
+      } else {
+        paint(ctx, () => strip(ctx, cam, road, zs.filter((z) => z < 55), -0.1, 0.1), col(mark), { ink: Math.max(1.6, 1.4 * U) });
+      }
+    }
+    for (let z = 9; z < 32; z += 7) {
+      [-1, 1].forEach((side) => {
+        const p = cam.p(road.x(z) + side * (halfW + shoulder * 0.55), z, 0);
+        if (p.s > 22) return;
+        let t = z * 1.7 + side;
+        const rand = () => {
+          t = (t * 12.9898) % 7.1;
+          return t / 7.1;
+        };
+        P.tuft(ctx, p.x, p.y, p.s, 0.42, pal.plantA, rand, U);
+      });
+    }
+  }
+
+  function populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome) {
+    const style = kit ? kit.house : "siding";
+    const treeStyle = kit ? kit.tree : "oak";
+    const perSide = kind === "city" ? 3 : kind === "village" ? 2 : 1;
+    [-1, 1].forEach((side) => {
+      let z = kind === "wild" ? 6.4 : 4.8;
+      for (let i = 0; i < perSide; i++) {
+        const near = i === 0;
+        const width = near ? 4.6 + rng() * 1.1 : 3.1 + rng() * 1.4;
+        const depth = near ? 8.4 + rng() * 2.2 : 6 + rng() * 2.2;
+        const spec = {
+          xa: road.x(z) + side * (halfW + (near ? 0.95 : 1.7)),
+          side,
+          z0: z,
+          width,
+          depth,
+          height: (kind === "city" ? 6.2 : 4.7) * (near ? 1 : 0.74 + rng() * 0.18),
+          panes: 2 + Math.floor(rng() * 3),
+          chimney: style === "siding" && rng() < 0.65,
+          style,
+          wall: profile.wallColor,
+          roof: profile.roofColor,
+          awning: profile.accentColor,
+          windowStyle: profile.windowStyle,
+        };
+        if (near || !L || L.take(spec.xa, z + depth / 2, depth / 2, width / 2)) {
+          queue.push({ z, draw: (ctx) => P.kitHouse(ctx, cam, spec, U) });
+        }
+        z += depth * 0.45 + (near ? 5.5 : 7);
+      }
+    });
+    const budget = biome === "jungle" ? 7 : biome === "meadow" || biome === "beach" ? 4 : biome === "dry" || biome === "rock" || biome === "highland" ? 1 : biome === "snow" ? 0 : 2;
+    const plant = biome === "dry" ? "cactus" : treeStyle;
+    for (let i = 0; i < budget; i++) {
+      const z = (biome === "dry" ? 16 : 5) + i * (biome === "jungle" ? 4.5 : 8);
+      const side = i % 2 ? 1 : -1;
+      const x = road.x(z) + side * (halfW + (kind === "city" ? 2.2 : 3.4 + (i % 3)));
+      if (L && !L.take(x, z, 1.2, 1.2)) continue;
+      queue.push({ z, draw: (ctx) => {
+        const p = cam.p(x, z, 0);
+        const tall = biome === "jungle" ? 9 : biome === "dry" ? 5 : kind === "wild" ? 8.5 : 6.5;
+        P.kitTree(ctx, p.x, p.y, p.s, tall, profile.vegetationColor, pal.trunk, plant, U);
+      } });
+    }
+    if (kit && kit.id === "suburb") {
+      const z = 4.6;
+      const x = road.x(z) + (halfW + 1.15);
+      if (!L || L.take(x, z, 0.4, 0.4)) {
+        queue.push({ z, draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          P.mailbox(ctx, p.x, p.y, p.s, U, profile.accentColor, profile.signGlyph);
+        } });
+      }
+      addPoles(queue, cam, road, halfW, profile, rng, U, -1, 1.15, L);
+    }
+    if (kit && kit.id === "dust") {
+      const z = 6.5;
+      const x = road.x(z) - (halfW + 1.4);
+      if (!L || L.take(x, z, 1.4, 0.8)) {
+        queue.push({ z, draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          P.kitWreck(ctx, p.x, p.y, p.s, profile.wallColor, U);
+        } });
+      }
+    }
+    if (rng() < 0.85) {
+      const z = 4.4 + rng() * 2.2;
+      const side = rng() < 0.5 ? -1 : 1;
+      const x = road.x(z) + side * (halfW + 0.85);
+      addAlien(queue, cam, road, halfW, profile, rng, U, z, x, L);
+    }
+  }
+
   function paintScene(ctx, o) {
-    const { planet, loc, profile, rng, U, kind, shown, pal, roadCls, halfW, cam, road, hz, zMax, biome } = o;
+    const { planet, loc, profile, rng, U, kind, shown, pal, halfW, cam, road, zMax, biome } = o;
+    const kit = kitOf(planet);
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    G.wc.setLine("pencil");
-    const rel = sunAngle(planet, profile, loc);
-    G.light = { dx: -Math.sin((rel * Math.PI) / 180), dy: Math.cos((rel * Math.PI) / 180) };
-    drawSky(ctx, cam, pal, profile, rng, U);
-    drawSunSide(ctx, cam, rel, rng, U);
-    if (shown.stars) drawStars(ctx, cam, profile, rng, U);
-    drawMoons(ctx, cam, planet, rng, U);
-    if (shown.skyEvent) drawSkyEvent(ctx, cam, profile, rng, U);
-    drawClouds(ctx, cam, pal, rng, U);
-    const shipCount = kind === "city" ? 1 + Math.floor(rng() * 3) : rng() < (kind === "village" ? 0.3 : 0.12) ? 1 : 0;
-    drawShips(ctx, cam, rng, U, shipCount);
-
-    const haze = mixC(pal.sky1, pal.glow, 0.5);
-    drawBand(ctx, cam, hz.bands.far, hz.meta.far, pal.mountain, haze, { haze: 0.4, snow: true, ink: 1, inkAlpha: 0.55, trees: 0 }, rng, U);
-    if (kind === "city") drawSkyline(ctx, cam, road, pal, rng, U);
-    drawSea(ctx, cam, hz, pal, rng, U);
-    if (shown.landmark) drawLandmarks(ctx, cam, profile, pal, rng, U);
-    drawBand(ctx, cam, hz.bands.mid, hz.meta.mid, pal.hill, haze, { haze: 0.32, snow: true, ink: 1.1, inkAlpha: 0.6, trees: 7 }, rng, U);
-    drawBand(ctx, cam, hz.bands.near, hz.meta.near, shade(pal.hill, -6), haze, { haze: 0.12, snow: false, ink: 1.4, inkAlpha: 0.8, trees: 12 }, rng, U);
-    drawGround(ctx, cam, hz, pal, rng, U);
-    if (shown.groundPattern && kind !== "city") drawGroundPattern(ctx, cam, road, halfW, profile, pal, rng, U);
-    drawRoad(ctx, cam, road, halfW, kind, roadCls, profile, pal, rng, U, zMax);
+    G.wc.setLine("pen");
+    G.light = { dx: -0.2, dy: 0.4 };
+    drawBandedSky(ctx, cam, pal, kit);
+    drawFlatOrb(ctx, cam, kit, U);
+    drawChunkCloud(ctx, cam.W * 0.3, cam.y0 * 0.22, cam.W * 0.22, cam.y0 * 0.16);
+    drawChunkCloud(ctx, cam.W * 0.68, cam.y0 * 0.34, cam.W * 0.16, cam.y0 * 0.12);
+    const hill = kit || { hillFar: pal.mountain, hillMid: pal.hill, hillNear: pal.ground };
+    drawWaveHill(ctx, cam, cam.y0 - 18, 26, mixC(hill.hillFar, pal.sky1, 0.2), 0.4);
+    drawWaveHill(ctx, cam, cam.y0 + 8, 34, mixC(hill.hillMid, pal.hill, 0.25), 1.7);
+    if (biome === "rock" || biome === "highland") {
+      drawWaveHill(ctx, cam, cam.y0 + 16, 50, mixC(pal.hill, { h: 22, s: 32, l: 44 }, 0.4), 0.85);
+    }
+    const groundTone = biome === "snow" ? mixC(pal.ground, { h: 210, s: 18, l: 90 }, 0.6) : biome === "dry" ? mixC(pal.ground, { h: 36, s: 42, l: 62 }, 0.45) : pal.ground;
+    drawWaveHill(ctx, cam, cam.y0 + 36, 42, groundTone, 2.5);
+    const treeStyle = kit ? kit.tree : "oak";
+    if (biome === "jungle" || biome === "meadow" || biome === "beach") {
+      P.kitTree(ctx, cam.W * 0.12, cam.y0 + 4, 9 * U, 8, pal.plantA, pal.trunk, treeStyle, U);
+      P.kitTree(ctx, cam.W * 0.28, cam.y0 - 6, 7 * U, 6, pal.plantB, pal.trunk, treeStyle, U);
+      P.kitTree(ctx, cam.W * 0.78, cam.y0 + 8, 8 * U, 7, pal.plantA, pal.trunk, treeStyle, U);
+    } else if (biome === "dry") {
+      P.kitTree(ctx, cam.W * 0.8, cam.y0 + 12, 5 * U, 5, pal.plantB, pal.trunk, "cactus", U);
+    } else if (biome !== "snow") {
+      P.kitTree(ctx, cam.W * 0.16, cam.y0 + 2, 8 * U, 7, pal.plantA, pal.trunk, treeStyle, U);
+      P.kitTree(ctx, cam.W * 0.8, cam.y0 + 10, 6.5 * U, 6, pal.plantB, pal.trunk, treeStyle, U);
+    }
+    drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax);
 
     const queue = [];
     const L = makeLayout();
-    addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, o.loc);
-    if (kind === "city") populateCity(queue, cam, road, halfW, profile, pal, rng, U, shown, L);
-    else if (kind === "village") populateVillage(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L);
-    else populateWild(queue, cam, road, halfW, profile, pal, biome, rng, U, shown, L);
-    drawQueue(ctx, cam, queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z), haze);
-    G.wc.setLine("pencil");
-
-    if (kind !== "city") drawForeground(ctx, cam, pal, biome, rng, U);
+    addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, loc, planet.difficulty);
+    populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome);
+    (planet.wonders || []).forEach((wonder) => {
+      const fx = Math.cos(loc.heading);
+      const fy = Math.sin(loc.heading);
+      const dx = wonder.x - loc.x;
+      const dy = wonder.y - loc.y;
+      const ahead = dx * fx + dy * fy;
+      const side = dx * -fy + dy * fx;
+      const dist = Math.hypot(dx, dy);
+      if (ahead < 0.4 || dist > 26) return;
+      const z = 7.5 + Math.min(dist, 20) * 0.12;
+      const x = (side >= 0 ? 1 : -1) * (halfW + 3.2);
+      queue.push({
+        z,
+        draw: (ctx) => {
+          P.wonder(ctx, cam, x, z, wonder.id, U);
+          const p = cam.p(x, z, 0);
+          noteHit(cam, p.x - p.s * 1.2, p.y - p.s * 2.4, p.s * 2.4, p.s * 1.1, "plaque", { id: wonder.id });
+        },
+      });
+    });
+    drawQueue(ctx, cam, queue.filter((item) => item.z < zMax).sort((a, b) => b.z - a.z));
     if (shown.probeCar) {
-      G.wc.setLine("pen");
       P.probeCar(ctx, cam.W, cam.H, profile.probeCar, pal.sky1, U);
-      G.wc.setLine("pencil");
     }
-    if (shown.weather) drawWeather(ctx, cam, profile, pal, rng, U);
-    finish(ctx, cam, U, pal, profile, rng);
     ctx.restore();
   }
 
