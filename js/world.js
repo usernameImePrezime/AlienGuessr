@@ -18,7 +18,7 @@
   const WINDOWS = ["slit", "round", "grid", "arch"];
   const WEATHERS = ["clear", "mist", "dust", "spores"];
   const FENCES = ["posts", "chain", "wall", "none"];
-  const BODIES = ["A", "B", "C", "D", "E", "F"];
+  const BODIES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
   const EYES = ["cute_light", "human", "psycho_light", "yellow", "red", "blue", "angry_blue", "human_green", "cute_dark"];
   const EYE_COUNTS = [1, 2, 3];
   const DETAILS = ["antenna_large", "antenna_small", "ear", "ear_round", "horn_large", "horn_small", "none"];

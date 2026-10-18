@@ -330,6 +330,46 @@
     draw();
   }
 
+  const SEED_KEY = "probedrop-seeds";
+
+  function loadSeeds() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SEED_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string" && item.trim()) : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function renderSeeds() {
+    const list = $("seed-list");
+    if (!list) return;
+    const seeds = loadSeeds();
+    list.replaceChildren();
+    if (!seeds.length) {
+      list.textContent = "Save a seed to return to that planet.";
+      return;
+    }
+    seeds.forEach((seed) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "seed-chip";
+      button.textContent = seed;
+      button.addEventListener("click", () => {
+        $("seed-input").value = seed;
+      });
+      list.appendChild(button);
+    });
+  }
+
+  function saveCurrentSeed() {
+    const seed = $("seed-input").value.trim();
+    if (!seed) return;
+    const seeds = [seed, ...loadSeeds().filter((item) => item !== seed)].slice(0, 12);
+    localStorage.setItem(SEED_KEY, JSON.stringify(seeds));
+    renderSeeds();
+  }
+
   function selectPlanet(id) {
     planetId = G.PLANETS && G.PLANETS.get(id) ? G.PLANETS.get(id).id : "candy";
     document.querySelectorAll(".planet").forEach((item) => {
@@ -354,9 +394,10 @@
   $("play-btn").addEventListener("click", () => start("play"));
   $("drop-btn").addEventListener("click", () => start("drop"));
   $("study-btn").addEventListener("click", () => start("study"));
+  $("save-seed").addEventListener("click", saveCurrentSeed);
+  renderSeeds();
   $("daily-btn").addEventListener("click", () => {
     $("seed-input").value = G.dailySeed();
-    selectPlanet(G.PLANETS.dailyId());
     start("drop");
   });
   $("confirm-btn").addEventListener("click", lockIn);
@@ -366,6 +407,11 @@
     show("start");
   });
   $("copy-seed").addEventListener("click", () => copyText(match.seed, $("copy-seed")));
+  $("keep-seed").addEventListener("click", () => {
+    if (!match) return;
+    $("seed-input").value = match.seed;
+    saveCurrentSeed();
+  });
   $("copy-challenge").addEventListener("click", () => copyText(challengeLink(), $("copy-challenge")));
   $("score-again").addEventListener("click", () => start(match.mode));
   $("loupe-close").addEventListener("click", hideLoupe);

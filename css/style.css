@@ -353,6 +353,45 @@ button {
   }
 }
 
+.saved-seeds {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.saved-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.seed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+  color: rgba(255, 246, 230, 0.7);
+  font-size: 13px;
+}
+
+.seed-chip {
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--paper);
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.seed-chip:hover {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
 .planets {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

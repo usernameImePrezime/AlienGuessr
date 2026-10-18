@@ -39,12 +39,17 @@
       const j = Math.floor(rng() * (i + 1));
       [keys[i], keys[j]] = [keys[j], keys[i]];
     }
-    const cap = [5, 6, 7][tier];
+    const cap = [8, 9, 10][tier];
     const shown = { probeCar: !!profile.probeCar && rng() < M.FEATURE_CHANCE.probeCar };
     let count = 0;
     keys.forEach((key) => {
       shown[key] = count < cap && rng() < M.FEATURE_CHANCE[key];
       if (shown[key]) count += 1;
+    });
+    ["aliens", "vegetation"].forEach((key) => {
+      if (!available[key] || shown[key]) return;
+      shown[key] = true;
+      count += 1;
     });
     const fallback = tier > 0 ? ["sign", "bollard", "billboard", "aliens", "building"] : ["sign", "aliens", "building", "vegetation", "skyEvent"];
     fallback.forEach((key) => {
@@ -204,7 +209,7 @@
 
   function drawMoons(ctx, cam, planet, rng, U) {
     const rand = stableRand(`${planet.seed}|moons`);
-    const count = 1 + Math.floor(rand() * 3);
+    const count = 2 + Math.floor(rand() * 2);
     for (let i = 0; i < count; i++) {
       const color = { h: rand() * 360, s: 55, l: 86 };
       const r = (18 + rand() * 30) * U;
@@ -1076,8 +1081,9 @@
     return { z: best.z, dir: Math.abs(best.c) > 0.04 ? Math.sign(best.c) : 0 };
   }
 
-  function addAlien(queue, cam, road, halfW, profile, rng, U, z0, x0, L) {
-    let z = Math.max(5, z0);
+  function addAlien(queue, cam, road, halfW, profile, rng, U, z0, x0, L, opts) {
+    const o = opts || {};
+    let z = Math.max(o.near ? 4.2 : 5, z0);
     let x = x0;
     if (L) {
       let ok = false;
@@ -1098,14 +1104,55 @@
           profile,
           color: pickColor(profile, rng),
           variant: Math.floor(rng() * 3),
-          pose: rng() < 0.3 ? 1 : 0,
-          flip: rng() < 0.5,
-          tilt: (rng() - 0.5) * 0.12,
-          scale: 0.9 + rng() * 0.2,
+          pose: o.pose === undefined ? (rng() < 0.3 ? 1 : 0) : o.pose,
+          flip: o.flip === undefined ? rng() < 0.5 : o.flip,
+          tilt: o.tilt === undefined ? (rng() - 0.5) * 0.28 : o.tilt,
+          scale: o.scale === undefined ? 1.2 + rng() * 0.35 : o.scale,
         }, U);
       },
     });
     return true;
+  }
+
+  const CANDY = [
+    { h: 186, s: 78, l: 56 },
+    { h: 322, s: 80, l: 62 },
+    { h: 108, s: 74, l: 50 },
+    { h: 276, s: 72, l: 62 },
+    { h: 48, s: 88, l: 58 },
+  ];
+
+  function candyPlant(ctx, x, y, s, biome, rng, U, roll) {
+    const color = CANDY[Math.floor(rng() * CANDY.length)];
+    const trunk = { h: 28, s: 36, l: 32 };
+    const r = roll === undefined ? rng() : roll;
+    if (biome === "dry") {
+      if (r < 0.62) P.kitTree(ctx, x, y, s, 3.6 + rng() * 2.4, color, trunk, "cactus", U);
+      else P.bulb(ctx, x, y, s, 1.5 + rng() * 1.6, color, rng, U);
+      return;
+    }
+    if (biome === "snow") {
+      if (r < 0.55) P.crystal(ctx, x, y, s, 1.8 + rng() * 2.4, color, rng, U);
+      else P.balloonPod(ctx, x, y, s, 2.4 + rng() * 2.2, color, rng, U);
+      return;
+    }
+    if (biome === "rock" || biome === "highland") {
+      if (r < 0.28) P.bulb(ctx, x, y, s, 1.2 + rng() * 1.1, color, rng, U);
+      else P.boulder(ctx, x, y, s, 0.5 + rng() * 1.5, { h: 262, s: 22, l: 48 }, rng, U);
+      return;
+    }
+    if (biome === "jungle") {
+      const h = 3.6 + rng() * 4.4;
+      if (r < 0.22) P.mushroom(ctx, x, y, s, 2.8 + rng() * 3.2, color, rng, U);
+      else if (r < 0.44) P.palm(ctx, x, y, s, 5 + rng() * 4, color, trunk, rng, U);
+      else if (r < 0.62) P.tentacle(ctx, x, y, s, h, color, rng, U);
+      else if (r < 0.8) P.balloonPod(ctx, x, y, s, h, color, rng, U);
+      else P.spiralFern(ctx, x, y, s, 2 + rng() * 2.2, color, rng, U);
+      return;
+    }
+    if (r < 0.4) P.mushroom(ctx, x, y, s, 1.6 + rng() * 1.6, color, rng, U);
+    else if (r < 0.7) P.palm(ctx, x, y, s, 3.2 + rng() * 2, color, trunk, rng, U);
+    else P.eyestalk(ctx, x, y, s, 1.2 + rng() * 1.2, color, rng, U);
   }
 
   function metaPlant(ctx, x, y, s, kind, vc, pal, rng, U) {
@@ -1127,6 +1174,7 @@
     const big = meta || (!rocky && r < (lush ? 0.3 : 0.15));
     if (L && z < 70) {
       const off = edgeOff === undefined ? 99 : edgeOff;
+      if (z < 4.6 && off < 2.2) return false;
       if (big && (z < 6.5 || off < 2)) return false;
       if (!L.take(x, z, big ? 1.5 : 0.55, big ? 1.3 : 0.5)) return false;
     }
@@ -1136,35 +1184,7 @@
       draw: (ctx) => {
         const p = cam.p(x, z, 0);
         if (p.x < -p.s * 8 || p.x > cam.W + p.s * 8) return;
-        const vc = shade(profile.vegetationColor, (rng() - 0.5) * 10);
-        if (meta) {
-          metaPlant(ctx, p.x, p.y, p.s, profile.vegetation, vc, pal, rng, U);
-          return;
-        }
-        const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
-        const plant = [pal.plantA, pal.plantB, pal.plantC][Math.floor(rng() * 3)];
-        if (biome === "rock" || biome === "snow" || (biome === "highland" && r < 0.5)) {
-          P.boulder(ctx, p.x, p.y, p.s, 0.4 + rng() * 1.4, pal.rock, rng, U);
-        } else if ((biome === "beach" && r < 0.12) || (biome === "dry" && r < 0.1)) {
-          P.tubeCoral(ctx, p.x, p.y, p.s, 0.8 + rng() * 1.3, { h: 5 + rng() * 40, s: 75, l: 66 }, rng, U);
-        } else if (r < (lush ? 0.3 : 0.15)) {
-          const t = rng();
-          if (t < 0.44) P.tree(ctx, p.x, p.y, p.s, 4.5 + rng() * 5, plant, pal.trunk, rng, U);
-          else if (t < 0.54) P.lollipopTree(ctx, p.x, p.y, p.s, 3.5 + rng() * 3, plant, pal.trunk, rng() < 0.5 ? pal.pop : pal.pop2, rng, U);
-          else if (t < 0.62) P.noodleTree(ctx, p.x, p.y, p.s, 4 + rng() * 4, plant, pal.trunk, rng() < 0.5 ? pal.pop : pal.pop2, rng, U);
-          else if (t < 0.82) P.cottonTree(ctx, p.x, p.y, p.s, 4 + rng() * 3, { h: [320, 200, 270][Math.floor(rng() * 3)], s: 60, l: 76 }, pal.trunk, rng, U);
-          else P.jellyTree(ctx, p.x, p.y, p.s, 4.5 + rng() * 3.5, { h: 180 + rng() * 40, s: 70, l: 72 }, pal.trunk, rng, U);
-        } else if (biome === "jungle" && r < 0.38) {
-          P.pitcher(ctx, p.x, p.y, p.s, 0.9 + rng() * 1.1, { h: rng() < 0.5 ? 340 : 95, s: 55, l: 52 }, rng, U);
-        } else if (r < 0.62) {
-          P.bush(ctx, p.x, p.y, p.s, 0.6 + rng() * 1.1, plant, rng, U);
-        } else if (r < 0.86) {
-          P.fern(ctx, p.x, p.y, p.s, 0.8 + rng() * 1.2, plant, rng, U);
-        } else if (r < 0.94) {
-          P.boulder(ctx, p.x, p.y, p.s, 0.3 + rng() * 0.7, pal.rock, rng, U);
-        } else {
-          P.flower(ctx, p.x, p.y, p.s, 0.5 + rng() * 0.4, { h: rng() * 360, s: 80, l: 70 }, rng, U);
-        }
+        candyPlant(ctx, p.x, p.y, p.s, biome, rng, U, r);
       },
     });
   }
@@ -1172,7 +1192,7 @@
   function addPoles(queue, cam, road, halfW, profile, rng, U, side, offset, L) {
     const anchors = [];
     const zs = [];
-    for (let z = 5 + rng() * 6; z < 220; z += 26) {
+    for (let z = 10 + rng() * 6; z < 220; z += 26) {
       if (!L || z > 70 || L.take(road.x(z) + side * (halfW + offset), z, 0.3, 0.35)) zs.push(z);
     }
     if (!zs.length) return;
@@ -1213,8 +1233,8 @@
 
   function placeBand(loc, difficulty) {
     const roll = (G.hashSeed(`${loc.x}|${loc.y}|clue`) % 1000) / 1000;
-    if (difficulty === "easy") return 5 + roll * 4;
-    if (difficulty === "medium") return roll < 0.4 ? 6 + roll * 6 : 14 + roll * 26;
+    if (difficulty === "easy") return 3.6 + roll * 1.6;
+    if (difficulty === "medium") return roll < 0.4 ? 3.6 + roll * 2.2 : 14 + roll * 26;
     return 22 + roll * 24;
   }
 
@@ -1318,7 +1338,7 @@
         }
       }
     }
-    if (shown.plate) addCar(queue, cam, road, halfW, profile, rng, U, 9 + rng() * 8, L);
+    if (shown.plate) addCar(queue, cam, road, halfW, profile, rng, U, 4.6 + rng() * 1.5, L);
     if (shown.fence && !city) {
       const side = railSide ? -railSide : rng() < 0.5 ? -1 : 1;
       for (let z = 3.2; z < 46; z += 7) {
@@ -1341,9 +1361,9 @@
         }
       }
     }
-    if ((difficulty === "easy" || !difficulty) && !shown.sign && !shown.banner) {
-      const z = placeBand(loc, "easy");
-      const x = road.x(z) + halfW + 1.3;
+    if (difficulty !== "hard" && !shown.sign && !shown.banner) {
+      const z = 3.5 + ((G.hashSeed(`${loc.x}|${loc.y}|near-flag`) % 1000) / 1000) * 1.1;
+      const x = road.x(z) + halfW + 1.15;
       at(z, x, 0, (ctx, p) => P.flagpole(ctx, p.x, p.y, p.s, profile.flag, profile.provinceFlag, U, false));
     }
     if (difficulty === "hard") {
@@ -1524,11 +1544,12 @@
     const plateSpec = plateFor(profile, rng);
     queue.push({ z, draw: (ctx) => {
       const p = cam.p(x, z, 0);
-      P.hoverCar(ctx, p.x, p.y, p.s, color, U, rng, plateSpec);
+      const scale = p.s * 1.55;
+      P.hoverCar(ctx, p.x, p.y, scale, color, U, rng, plateSpec);
       if (!plateSpec) return;
-      const pw = p.s * 1.9 * 0.34;
+      const pw = scale * 0.6;
       const ph = pw * 0.42;
-      const cy = p.y - p.s * 0.38 - p.s * 0.85 * 0.3;
+      const cy = p.y - scale * 0.52;
       noteHit(cam, p.x - pw / 2, cy - ph / 2, pw, ph, "plate", plateSpec);
     } });
   }
@@ -1901,24 +1922,39 @@
   }
 
   function drawBandedSky(ctx, cam, pal, kit) {
-    const bands = kit && kit.sky ? kit.sky : [pal.sky0, pal.sky1, pal.sky1, pal.sky0];
-    const n = bands.length;
-    for (let i = 0; i < n; i++) {
-      const top = (cam.y0 * i) / n;
-      const bot = i === n - 1 ? cam.y0 + 28 : (cam.y0 * (i + 1)) / n + 18;
-      const color = mixC(bands[i], i % 2 ? pal.sky1 : pal.sky0, 0.22);
-      paint(ctx, () => {
-        ctx.moveTo(0, top);
-        for (let x = 0; x <= cam.W; x += 12) ctx.lineTo(x, top + Math.sin(x * 0.008 + i * 1.3) * 10);
-        ctx.lineTo(cam.W, bot);
-        for (let x = cam.W; x >= 0; x -= 12) ctx.lineTo(x, bot + Math.sin(x * 0.008 + i + 0.6) * 8);
-        ctx.closePath();
-      }, col(color));
-    }
+    void pal;
+    void kit;
+    const lemon = { h: 50, s: 58, l: 90 };
+    const mint = { h: 162, s: 36, l: 84 };
+    const blush = { h: 348, s: 42, l: 88 };
+    const g = ctx.createLinearGradient(0, 0, 0, cam.y0 + 48);
+    g.addColorStop(0, col(lemon));
+    g.addColorStop(0.46, col(mint));
+    g.addColorStop(1, col(blush));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, cam.W, cam.y0 + 48);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, cam.W, cam.y0 + 40);
+    ctx.clip();
+    [
+      [0.18, 0.22, 0.42, lemon],
+      [0.52, 0.34, 0.5, mint],
+      [0.82, 0.18, 0.34, blush],
+      [0.32, 0.62, 0.46, blush],
+      [0.7, 0.5, 0.38, mint],
+      [0.08, 0.48, 0.28, lemon],
+    ].forEach(([x, y, r, c]) => {
+      G.wc.bloom(ctx, cam.W * x, cam.y0 * y, cam.W * r * 0.34, col(c), 0.28);
+    });
+    ctx.restore();
   }
 
   function hillY(x, y, amp, phase) {
-    return y - (Math.sin(x * 0.0062 + phase) * amp + Math.sin(x * 0.014 + phase * 1.4) * amp * 0.22);
+    const wave = Math.sin(x * 0.0062 + phase) * amp + Math.sin(x * 0.014 + phase * 1.4) * amp * 0.22;
+    const lump = Math.sin(x * 0.031 + phase * 2.2) * amp * 0.2;
+    const bump = Math.sin(x * 0.084 + phase * 0.7) > 0.74 ? amp * 0.26 : 0;
+    return y - (wave + lump + bump);
   }
 
   function drawWaveHill(ctx, cam, y, amp, color, phase) {
@@ -1945,10 +1981,42 @@
     paint(ctx, () => ctx.arc(x, y, r, 0, TAU), col(fill), { ink: Math.max(3, 2.4 * U) });
   }
 
+  function drawTowers(ctx, cam, U) {
+    const baseY = cam.y0 + 6;
+    [[0.42, 0.3, 0.012], [0.52, 0.22, 0.01]].forEach(([x, h, w]) => {
+      const cx = cam.W * x;
+      const top = baseY - cam.H * h;
+      paint(ctx, () => {
+        ctx.moveTo(cx - cam.W * w, baseY);
+        ctx.lineTo(cx - cam.W * w * 0.62, top);
+        ctx.lineTo(cx + cam.W * w * 0.62, top);
+        ctx.lineTo(cx + cam.W * w, baseY);
+        ctx.closePath();
+      }, col({ h: 258, s: 16, l: 64 }), { ink: Math.max(1.2, 1.3 * U) });
+    });
+  }
+
+  function drawSpiral(ctx, cam, U) {
+    const cx = cam.W * 0.5;
+    const cy = cam.y0 * 0.46;
+    const maxR = Math.max(70, cam.y0 * 0.78);
+    stroke(ctx, () => {
+      for (let i = 0; i < 72; i++) {
+        const t = i / 72;
+        const a = t * Math.PI * 5.4;
+        const rr = 5 * U + t * maxR;
+        const x = cx + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr * 0.55;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+    }, "#f4e4ff", Math.max(3.2, 3.4 * U));
+  }
+
   function drawChunkCloud(ctx, cx, cy, w, h) {
     const ink = Math.max(2.8, h * 0.09);
     [
-      [-0.3, 0.06, 0.24, 0.36],
+      [-0.36, -0.04, 0.38, 0.52],
       [-0.08, -0.18, 0.28, 0.4],
       [0.16, -0.04, 0.24, 0.34],
       [0.34, 0.12, 0.18, 0.26],
@@ -1958,6 +2026,7 @@
       paint(ctx, () => ctx.ellipse(cx + ox * w, cy + oy * h, rx * w, ry * h, 0, 0, TAU), "#f7f8fb");
     });
     paint(ctx, () => ctx.ellipse(cx + w * 0.02, cy + h * 0.18, w * 0.34, h * 0.14, 0, 0, TAU), "#c5ceda");
+    G.wc.bloom(ctx, cx + w * 0.04, cy - h * 0.08, w * 0.28, "rgba(255,255,255,0.9)", 0.5);
     paint(ctx, () => {
       ctx.moveTo(cx - w * 0.5, cy + h * 0.16);
       ctx.bezierCurveTo(cx - w * 0.54, cy - h * 0.4, cx - w * 0.14, cy - h * 0.78, cx + w * 0.02, cy - h * 0.5);
@@ -1967,15 +2036,19 @@
     }, "rgba(0,0,0,0)", { ink });
   }
 
-  function drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax) {
+  function drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax, biome, kind) {
     const far = Math.min(70, zMax);
     const zs = roadSamples(cam, far);
     const shoulder = !kit ? 0.85 : kit.shoulder === "lawn" ? 1.25 : kit.shoulder === "pier" ? 1.35 : 0.8;
-    const shoulderColor = !kit ? pal.ground
+    let shoulderColor = !kit ? pal.ground
       : kit.shoulder === "lawn" ? shade(pal.plantA, 6)
       : kit.shoulder === "dust" ? shade(pal.ground, 8)
       : kit.shoulder === "pier" ? { h: 28, s: 36, l: 58 }
       : { h: 36, s: 16, l: 84 };
+    if (biome === "dry") shoulderColor = { h: 34, s: 48, l: 58 };
+    else if (biome === "snow") shoulderColor = { h: 206, s: 12, l: 90 };
+    else if (biome === "jungle") shoulderColor = { h: 118, s: 42, l: 30 };
+    else if (biome === "rock" || biome === "highland") shoulderColor = { h: 26, s: 16, l: 50 };
     const ink = Math.max(2.6, 2.2 * U);
     [-1, 1].forEach((side) => {
       paint(ctx, () => strip(ctx, cam, road, zs, side * halfW, side * (halfW + shoulder), 0.04), col(shoulderColor), { ink });
@@ -1991,8 +2064,13 @@
         });
       }
     }
-    const asphalt = mixC(profile.pathColor || { h: 230, s: 12, l: 46 }, kit ? kit.road : pal.ground, 0.45);
+    const asphalt = kind === "city"
+      ? mixC(profile.pathColor || { h: 228, s: 10, l: 64 }, { h: 226, s: 8, l: 72 }, 0.5)
+      : { h: 16, s: 48, l: 58 };
     paint(ctx, () => strip(ctx, cam, road, zs, -halfW, halfW), col(asphalt), { ink: ink + 0.6 });
+    if (kind !== "city") {
+      paint(ctx, () => strip(ctx, cam, road, zs.filter((z) => z < 60), -halfW * 0.22, halfW * 0.22), col({ h: 28, s: 40, l: 74 }));
+    }
     const mark = profile.pathLineColor || { h: 50, s: 80, l: 62 };
     const pattern = profile.linePattern;
     if (pattern !== "none") {
@@ -2008,7 +2086,7 @@
         paint(ctx, () => strip(ctx, cam, road, zs.filter((z) => z < 55), -0.1, 0.1), col(mark), { ink: Math.max(1.6, 1.4 * U) });
       }
     }
-    for (let z = 9; z < 32; z += 7) {
+    if (biome !== "dry" && biome !== "snow" && biome !== "rock") for (let z = 9; z < 32; z += 7) {
       [-1, 1].forEach((side) => {
         const p = cam.p(road.x(z) + side * (halfW + shoulder * 0.55), z, 0);
         if (p.s > 22) return;
@@ -2022,49 +2100,231 @@
     }
   }
 
-  function populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome) {
-    const style = kit ? kit.house : "siding";
-    const treeStyle = kit ? kit.tree : "oak";
-    const perSide = kind === "city" ? 3 : kind === "village" ? 2 : 1;
-    [-1, 1].forEach((side) => {
-      let z = kind === "wild" ? 6.4 : 4.8;
-      for (let i = 0; i < perSide; i++) {
-        const near = i === 0;
-        const width = near ? 4.6 + rng() * 1.1 : 3.1 + rng() * 1.4;
-        const depth = near ? 8.4 + rng() * 2.2 : 6 + rng() * 2.2;
+  function houseMaterial(kind, biome, index) {
+    if (kind === "city") return index % 3 === 2 ? "stone" : "metal";
+    if (biome === "dry") return "metal";
+    if (biome === "rock" || biome === "highland") return "stone";
+    if (biome === "beach") return index % 2 ? "wood" : "metal";
+    return "wood";
+  }
+
+  function materialColor(material, tint) {
+    const base = material === "metal" ? { h: 205, s: 16, l: 46 }
+      : material === "stone" ? { h: 28, s: 18, l: 58 }
+      : { h: 26, s: 46, l: 40 };
+    return tint ? mixC(base, tint, 0.28) : base;
+  }
+
+  function populateExoticPlants(queue, cam, road, halfW, rng, U, L, loc, difficulty, kind) {
+    const family = P.exoticFamily(loc.y);
+    let codeSide = 0;
+    if (difficulty === "hard") {
+      const zc = 3.4 + ((G.hashSeed(`${loc.x}|${loc.y}|code`) % 1000) / 1000) * 1.2;
+      codeSide = G.hashSeed(`${loc.x}|code-side`) % 2 ? 1 : -1;
+      const xc = road.x(zc) + codeSide * (halfW + 0.85);
+      L.block(xc - 1.6, xc + 1.6, zc - 0.9, zc + 1.6);
+    }
+    const city = kind === "city";
+    const bag = family.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const swap = bag[i];
+      bag[i] = bag[j];
+      bag[j] = swap;
+    }
+    const spots = [];
+    for (let i = 0; i < 14; i++) {
+      spots.push({
+        z: 4.7 + i * 2.15,
+        side: i % 2 ? 1 : -1,
+        h: i < 3 ? 2.7 + (i % 2) * 0.7 : i < 8 ? 1.85 : 1.15,
+      });
+    }
+    spots.forEach((spot, i) => {
+      const name = bag[i % bag.length];
+      const z0 = Math.max(4.9, spot.z + (rng() - 0.5) * 0.7);
+      const hh = spot.h * (0.9 + rng() * 0.2);
+      let side = spot.side;
+      if (codeSide && z0 < 9 && side === codeSide) side = -side;
+      const offs = city ? [1.55, 1.85, 2.1] : [1.85, 2.7, 4.1, 5.6];
+      const sides = [side, -side];
+      const zs = [z0, z0 + 1.6, z0 + 3.2];
+      let placed = null;
+      for (let zi = 0; zi < zs.length && !placed; zi++) {
+        const zz = zs[zi];
+        for (let si = 0; si < sides.length && !placed; si++) {
+          const sd = sides[si];
+          if (codeSide && zz < 9 && sd === codeSide) continue;
+          for (let oi = 0; oi < offs.length && !placed; oi++) {
+            const xx = road.x(zz) + sd * (halfW + offs[oi]);
+            const p = cam.p(xx, zz, 0);
+            if (p.x < 42 || p.x > cam.W - 42) continue;
+            if (L.take(xx, zz, city ? 0.34 : 0.58, city ? 0.32 : 0.46)) placed = { x: xx, z: zz };
+          }
+        }
+      }
+      if (!placed) return;
+      const shapeSeed = G.hashSeed(`${name}|${i}|${placed.z.toFixed(2)}|${placed.x.toFixed(2)}|${Number(loc.y).toFixed(1)}`);
+      const z = placed.z;
+      const x = placed.x;
+      queue.push({
+        z,
+        pencil: true,
+        draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          if (p.x < -p.s * 14 || p.x > cam.W + p.s * 14) return;
+          P.drawExotic(ctx, name, p.x, p.y, p.s, hh, G.mulberry32(shapeSeed || 1), U);
+        },
+      });
+    });
+  }
+
+  function populateBiomePlants(queue, cam, road, halfW, profile, pal, rng, U, shown, L, biome) {
+    const budget = biome === "jungle" ? 20
+      : biome === "meadow" || biome === "beach" ? 12
+      : biome === "dry" ? 9
+      : biome === "snow" ? 7
+      : biome === "rock" || biome === "highland" ? 8
+      : 6;
+    for (let i = 0; i < budget; i++) {
+      const z = 6.2 + Math.pow(rng(), 1.25) * (biome === "jungle" ? 54 : 38);
+      const side = i % 2 ? 1 : -1;
+      const off = 0.9 + Math.pow(rng(), 1.15) * (biome === "jungle" ? 11 : 7);
+      addPlant(queue, cam, profile, pal, biome, rng, U, z, road.x(z) + side * (halfW + off), shown, true, L, off);
+    }
+    if (biome === "jungle" || biome === "meadow" || biome === "beach") {
+      for (let i = 0; i < 12; i++) {
+        const z = 4.5 + (i % 6) * 0.55;
+        const side = i % 2 ? 1 : -1;
+        const x = road.x(z) + side * (halfW + 1.15 + (i % 3) * 0.65);
+        const color = CANDY[i % CANDY.length];
+        queue.push({
+          z,
+          draw: (ctx) => {
+            const p = cam.p(x, z, 0);
+            if (p.x < -20 || p.x > cam.W + 20) return;
+            if (i % 2) P.mushroom(ctx, p.x, p.y, p.s * 0.72, 1.3 + (i % 3) * 0.3, color, rng, U);
+            else P.eyestalk(ctx, p.x, p.y, p.s * 0.6, 1.05, color, rng, U);
+          },
+        });
+      }
+    }
+  }
+
+  function drawCritter(ctx, x, y, s, color) {
+    paint(ctx, () => ctx.ellipse(x, y - s * 0.32, s * 0.5, s * 0.28, 0, 0, TAU), col(color), { ink: Math.max(1.6, s * 0.12) });
+    paint(ctx, () => ctx.arc(x + s * 0.16, y - s * 0.4, Math.max(1.2, s * 0.1), 0, TAU), "#1b1033");
+    paint(ctx, () => ctx.arc(x + s * 0.2, y - s * 0.42, Math.max(0.5, s * 0.035), 0, TAU), "#fff");
+  }
+
+  function populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome, loc) {
+    const roofs = ["flat", "gable", "dome", "spike"];
+    if (kind === "wild") {
+      const z = 5.4;
+      const side = -1;
+      const spec = {
+        xa: road.x(z) + (halfW + 2.4),
+        side,
+        z0: z,
+        width: 3.6,
+        depth: 2.6,
+        height: 3.6,
+        wall: materialColor("wood", profile.wallColor),
+        roof: { h: 14, s: 46, l: 30 },
+        awning: profile.accentColor,
+        windowStyle: profile.windowStyle,
+        glyphs: [profile.signGlyph],
+        board: profile.accentColor,
+        rand: rng,
+        roofShape: "spike",
+      };
+      queue.push({ z, draw: (ctx) => P.shack(ctx, cam, spec, U) });
+      const bz = 4.7;
+      const bx = road.x(bz) + halfW * 0.55;
+      queue.push({
+        z: bz,
+        draw: (ctx) => {
+          const p = cam.p(bx, bz, 0);
+          P.bench(ctx, p.x, p.y, p.s * 1.2, { h: 22, s: 42, l: 34 }, U);
+        },
+      });
+    }
+    if (kind === "city") {
+      [
+        { side: -1, z: 4.8, height: 9.4, balcony: true, roofKind: "flat" },
+        { side: -1, z: 8.6, height: 6.2, balcony: false, roofKind: "gable" },
+        { side: 1, z: 6.8, height: 7.6, balcony: true, roofKind: "dome" },
+        { side: 1, z: 10.4, height: 5.6, balcony: false, roofKind: "spike" },
+      ].forEach((shop, i) => {
+        const material = houseMaterial(kind, biome, i);
         const spec = {
-          xa: road.x(z) + side * (halfW + (near ? 0.95 : 1.7)),
+          xa: road.x(shop.z) + shop.side * (halfW + 0.2),
+          side: shop.side,
+          z0: shop.z,
+          width: 4.2 + (i % 2) * 0.8,
+          depth: 5.4,
+          height: shop.height,
+          panes: 2 + (i % 3),
+          chimney: false,
+          material,
+          style: "siding",
+          wall: mixC(materialColor(material, profile.wallColor), { h: profile.wallColor.h, s: 36, l: 26 + (i % 3) * 16 }, 0.2),
+          roof: material === "metal" ? { h: 220, s: 22, l: 32 } : material === "stone" ? { h: 18, s: 22, l: 36 } : { h: 12, s: 48, l: 28 },
+          roofKind: shop.roofKind,
+          balcony: shop.balcony,
+          awning: shop.balcony ? null : profile.accentColor,
+          windowStyle: profile.windowStyle,
+        };
+        queue.push({ z: shop.z, draw: (ctx) => P.kitHouse(ctx, cam, spec, U) });
+      });
+      const stallZ = 4.45;
+      const stallX = cam.lane + (cam.W * 0.84 - cam.cx) * stallZ / cam.f;
+      queue.push({
+        z: stallZ,
+        draw: (ctx) => {
+          const p = cam.p(stallX, stallZ, 0);
+          P.stall(ctx, p.x, p.y, p.s * 1.15, profile.accentColor, U, rng);
+        },
+      });
+      const carZ = 7;
+      const carX = road.x(carZ);
+      queue.push({
+        z: carZ,
+        draw: (ctx) => {
+          const p = cam.p(carX, carZ, 0);
+          P.hoverCar(ctx, p.x, p.y, p.s * 0.85, profile.accentColor, U, rng, plateFor(profile, rng));
+        },
+      });
+    }
+    if (kind === "village") {
+      const n = 2;
+      let z = 7.6;
+      for (let i = 0; i < n; i++) {
+        const side = i % 2 ? 1 : -1;
+        const material = "wood";
+        const width = 3.6 + rng() * 0.6;
+        const depth = 5.2;
+        const spec = {
+          xa: road.x(z) + side * (halfW + (i === 0 ? 1.05 : 2.2)),
           side,
           z0: z,
           width,
           depth,
-          height: (kind === "city" ? 6.2 : 4.7) * (near ? 1 : 0.74 + rng() * 0.18),
-          panes: 2 + Math.floor(rng() * 3),
-          chimney: style === "siding" && rng() < 0.65,
-          style,
-          wall: profile.wallColor,
-          roof: profile.roofColor,
-          awning: profile.accentColor,
+          height: 3.1 + rng() * 0.7,
+          panes: 2 + (i % 3),
+          chimney: kind === "village",
+          material,
+          style: "siding",
+          wall: mixC(materialColor(material, profile.wallColor), { h: profile.wallColor.h, s: 36, l: 26 + (i % 3) * 16 }, 0.2),
+          roof: material === "metal" ? { h: 220, s: 22, l: 32 } : material === "stone" ? { h: 18, s: 22, l: 36 } : { h: 12, s: 48, l: 28 },
+          roofKind: roofs[i % roofs.length],
+          balcony: kind === "city" && i % 2 === 0,
+          awning: kind === "village" || kind === "city" ? profile.accentColor : null,
           windowStyle: profile.windowStyle,
         };
-        if (near || !L || L.take(spec.xa, z + depth / 2, depth / 2, width / 2)) {
-          queue.push({ z, draw: (ctx) => P.kitHouse(ctx, cam, spec, U) });
-        }
-        z += depth * 0.45 + (near ? 5.5 : 7);
+        queue.push({ z, draw: (ctx) => P.kitHouse(ctx, cam, spec, U) });
+        z += kind === "city" ? 8.5 + rng() * 2.5 : 7;
       }
-    });
-    const budget = biome === "jungle" ? 7 : biome === "meadow" || biome === "beach" ? 4 : biome === "dry" || biome === "rock" || biome === "highland" ? 1 : biome === "snow" ? 0 : 2;
-    const plant = biome === "dry" ? "cactus" : treeStyle;
-    for (let i = 0; i < budget; i++) {
-      const z = (biome === "dry" ? 16 : 5) + i * (biome === "jungle" ? 4.5 : 8);
-      const side = i % 2 ? 1 : -1;
-      const x = road.x(z) + side * (halfW + (kind === "city" ? 2.2 : 3.4 + (i % 3)));
-      if (L && !L.take(x, z, 1.2, 1.2)) continue;
-      queue.push({ z, draw: (ctx) => {
-        const p = cam.p(x, z, 0);
-        const tall = biome === "jungle" ? 9 : biome === "dry" ? 5 : kind === "wild" ? 8.5 : 6.5;
-        P.kitTree(ctx, p.x, p.y, p.s, tall, profile.vegetationColor, pal.trunk, plant, U);
-      } });
     }
     if (kit && kit.id === "suburb") {
       const z = 4.6;
@@ -2075,6 +2335,8 @@
           P.mailbox(ctx, p.x, p.y, p.s, U, profile.accentColor, profile.signGlyph);
         } });
       }
+    }
+    if (kind === "city" || (kit && kit.id === "suburb")) {
       addPoles(queue, cam, road, halfW, profile, rng, U, -1, 1.15, L);
     }
     if (kit && kit.id === "dust") {
@@ -2087,11 +2349,93 @@
         } });
       }
     }
-    if (rng() < 0.85) {
-      const z = 4.4 + rng() * 2.2;
-      const side = rng() < 0.5 ? -1 : 1;
-      const x = road.x(z) + side * (halfW + 0.85);
-      addAlien(queue, cam, road, halfW, profile, rng, U, z, x, L);
+    function onShoulder(z, side, extra) {
+      const center = road.x(z);
+      const reach = Math.min(halfW, 2.15) + extra;
+      let x = center + side * reach;
+      let p = cam.p(x, z, 0);
+      const margin = 78;
+      if (p.x < margin || p.x > cam.W - margin) {
+        side = -side;
+        x = center + side * reach;
+        p = cam.p(x, z, 0);
+      }
+      let guard = 0;
+      while ((p.x < margin || p.x > cam.W - margin) && guard < 6) {
+        x = center + (x - center) * 0.62;
+        p = cam.p(x, z, 0);
+        guard += 1;
+      }
+      return x;
+    }
+    function atPixel(z, px) {
+      return cam.lane + (px - cam.cx) * z / cam.f;
+    }
+    const lush = biome === "jungle" || biome === "meadow" || biome === "beach";
+    if (kind !== "city" && lush) {
+      const still = () => 0.46;
+      queue.push({
+        z: 5.8,
+        draw: (ctx) => {
+          P.mushroom(ctx, cam.W * 0.02, cam.H * 0.86, 42 * U, 4.6, CANDY[1], still, U);
+          P.mushroom(ctx, cam.W * 0.16, cam.H * 0.94, 34 * U, 3.8, CANDY[3], () => 0.72, U);
+        },
+      });
+      queue.push({
+        z: 8.4,
+        draw: (ctx) => {
+          P.spiralFern(ctx, cam.W * 0.08, cam.H * 0.34, 28 * U, 4.2, CANDY[0], still, U);
+        },
+      });
+      queue.push({
+        z: 8.8,
+        draw: (ctx) => {
+          P.palm(ctx, cam.W * 0.9, cam.H * 0.4, 32 * U, 5.2, CANDY[1], { h: 28, s: 36, l: 32 }, still, U);
+        },
+      });
+    }
+    const spotKey = G.hashSeed(`${loc ? loc.x : 0}|${loc ? loc.y : 0}|crowd`);
+    const layout = kind === "city" ? 3 : spotKey % 3;
+    const roll = G.mulberry32(spotKey || 1);
+    const placeOne = (z, px, scale, pose, flip) => {
+      addAlien(queue, cam, road, halfW, profile, rng, U, z, atPixel(z, cam.W * px), null, {
+        scale,
+        pose,
+        near: z < 5.2,
+        flip: !!flip,
+        tilt: (roll() - 0.5) * 0.36,
+      });
+    };
+    if (layout === 0) {
+      placeOne(4.35, 0.4, 2.15, 1, false);
+      placeOne(4.62, 0.76, 0.82, 2, false);
+      [[4.42, 0.9, 0.5, 0, false], [4.7, 0.8, 0.68, 4, false], [4.95, 0.7, 0.58, 0, true]].forEach(([z, px, scale, pose, flip]) => placeOne(z, px, scale, pose, flip));
+      [[4.5, 0.14, 0.55, 1, true], [4.95, 0.24, 0.48, 3, true]].forEach(([z, px, scale, pose, flip]) => placeOne(z, px, scale, pose, flip));
+    } else if (layout === 1) {
+      placeOne(4.5, 0.38, 1.35, 4, false);
+      placeOne(4.55, 0.62, 1.2, 1, true);
+      [[6.2, 0.3, 0.5, 3, true], [7.1, 0.7, 0.46, 0, false], [8.4, 0.48, 0.45, 2, false]].forEach(([z, px, scale, pose, flip]) => placeOne(z, px, scale, pose, flip));
+    } else if (layout === 2) {
+      placeOne(4.25, 0.5, 2.3, 1, roll() < 0.5);
+      [[5.4, 0.18, 0.62, 3, true], [5.8, 0.82, 0.55, 3, false], [6.6, 0.28, 0.48, 0, true], [7.4, 0.72, 0.5, 4, false]].forEach(([z, px, scale, pose, flip]) => placeOne(z, px, scale, pose, flip));
+    } else {
+      placeOne(4.4, 0.5, 1.7, 1, false);
+      placeOne(4.7, 0.82, 0.9, 2, false);
+      [[5.3, 0.16, 0.7, 4, true], [6.0, 0.24, 0.52, 0, true], [5.5, 0.7, 0.64, 3, false], [6.4, 0.62, 0.48, 1, false]].forEach(([z, px, scale, pose, flip]) => placeOne(z, px, scale, pose, flip));
+    }
+    for (let i = 0; i < 5; i++) {
+      const z = 4.4 + i * 0.35;
+      const px = i % 2 ? cam.W * (0.08 + (i % 3) * 0.05) : cam.W * (0.92 - (i % 3) * 0.04);
+      const x = kind === "city" ? onShoulder(z, i % 2 ? -1 : 1, 1.6) : atPixel(z, px);
+      const color = CANDY[(i + 2) % CANDY.length];
+      queue.push({
+        z,
+        draw: (ctx) => {
+          const p = cam.p(x, z, 0);
+          if (p.x < 8 || p.x > cam.W - 8) return;
+          drawCritter(ctx, p.x, p.y, p.s * 0.55, color);
+        },
+      });
     }
   }
 
@@ -2105,33 +2449,52 @@
     G.light = { dx: -0.2, dy: 0.4 };
     drawBandedSky(ctx, cam, pal, kit);
     drawFlatOrb(ctx, cam, kit, U);
+    drawMoons(ctx, cam, planet, rng, U);
+    if (kind === "city") {
+      drawSpiral(ctx, cam, U);
+      drawTowers(ctx, cam, U);
+    }
     drawChunkCloud(ctx, cam.W * 0.3, cam.y0 * 0.22, cam.W * 0.22, cam.y0 * 0.16);
     drawChunkCloud(ctx, cam.W * 0.68, cam.y0 * 0.34, cam.W * 0.16, cam.y0 * 0.12);
-    const hill = kit || { hillFar: pal.mountain, hillMid: pal.hill, hillNear: pal.ground };
-    drawWaveHill(ctx, cam, cam.y0 - 18, 26, mixC(hill.hillFar, pal.sky1, 0.2), 0.4);
-    drawWaveHill(ctx, cam, cam.y0 + 8, 34, mixC(hill.hillMid, pal.hill, 0.25), 1.7);
+    void kit;
+    void pal;
+    let hillFar = { h: 338, s: 28, l: 76 };
+    let hillMid = { h: 272, s: 24, l: 78 };
+    if (biome === "dry") {
+      hillFar = { h: 22, s: 36, l: 76 };
+      hillMid = { h: 16, s: 34, l: 68 };
+    } else if (biome === "snow") {
+      hillFar = { h: 206, s: 14, l: 94 };
+      hillMid = { h: 214, s: 12, l: 88 };
+    }
+    drawWaveHill(ctx, cam, cam.y0 - 18, 26, hillFar, 0.4);
+    drawWaveHill(ctx, cam, cam.y0 + 8, 34, hillMid, 1.7);
     if (biome === "rock" || biome === "highland") {
       drawWaveHill(ctx, cam, cam.y0 + 16, 50, mixC(pal.hill, { h: 22, s: 32, l: 44 }, 0.4), 0.85);
     }
-    const groundTone = biome === "snow" ? mixC(pal.ground, { h: 210, s: 18, l: 90 }, 0.6) : biome === "dry" ? mixC(pal.ground, { h: 36, s: 42, l: 62 }, 0.45) : pal.ground;
+    const groundTone = biome === "snow" ? { h: 206, s: 14, l: 92 }
+      : biome === "dry" ? { h: 36, s: 48, l: 64 }
+      : biome === "jungle" ? mixC(pal.ground, { h: 118, s: 44, l: 30 }, 0.62)
+      : biome === "rock" || biome === "highland" ? { h: 26, s: 16, l: 50 }
+      : pal.ground;
     drawWaveHill(ctx, cam, cam.y0 + 36, 42, groundTone, 2.5);
-    const treeStyle = kit ? kit.tree : "oak";
-    if (biome === "jungle" || biome === "meadow" || biome === "beach") {
-      P.kitTree(ctx, cam.W * 0.12, cam.y0 + 4, 9 * U, 8, pal.plantA, pal.trunk, treeStyle, U);
-      P.kitTree(ctx, cam.W * 0.28, cam.y0 - 6, 7 * U, 6, pal.plantB, pal.trunk, treeStyle, U);
-      P.kitTree(ctx, cam.W * 0.78, cam.y0 + 8, 8 * U, 7, pal.plantA, pal.trunk, treeStyle, U);
-    } else if (biome === "dry") {
-      P.kitTree(ctx, cam.W * 0.8, cam.y0 + 12, 5 * U, 5, pal.plantB, pal.trunk, "cactus", U);
-    } else if (biome !== "snow") {
-      P.kitTree(ctx, cam.W * 0.16, cam.y0 + 2, 8 * U, 7, pal.plantA, pal.trunk, treeStyle, U);
-      P.kitTree(ctx, cam.W * 0.8, cam.y0 + 10, 6.5 * U, 6, pal.plantB, pal.trunk, treeStyle, U);
-    }
-    drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax);
+    const ridge = biome === "jungle"
+      ? [[0.08, 2, 11], [0.22, -8, 8], [0.4, 6, 7], [0.72, -2, 9], [0.9, 8, 8]]
+      : biome === "snow" ? [[0.16, 8, 6], [0.78, 12, 5]]
+      : biome === "dry" ? [[0.14, 10, 7], [0.8, 14, 6]]
+      : biome === "meadow" || biome === "beach" ? [[0.12, 4, 7], [0.78, 8, 6]]
+      : [[0.16, 2, 6], [0.82, 10, 5]];
+    ridge.forEach(([x, dy, sc], i) => {
+      candyPlant(ctx, cam.W * x, cam.y0 + dy, sc * U, biome, rng, U, (i * 0.37) % 1);
+    });
+    drawCleanRoad(ctx, cam, road, halfW, profile, kit, pal, U, zMax, biome, kind);
 
     const queue = [];
     const L = makeLayout();
     addCommon(queue, cam, road, halfW, profile, pal, rng, U, shown, kind, L, loc, planet.difficulty);
-    populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome);
+    populateKitStreet(queue, cam, road, halfW, profile, pal, rng, U, kind, L, kit, biome, loc);
+    populateBiomePlants(queue, cam, road, halfW, profile, pal, rng, U, shown, L, biome);
+    populateExoticPlants(queue, cam, road, halfW, rng, U, L, loc, planet.difficulty, kind);
     (planet.wonders || []).forEach((wonder) => {
       const fx = Math.cos(loc.heading);
       const fy = Math.sin(loc.heading);
@@ -2156,6 +2519,7 @@
     if (shown.probeCar) {
       P.probeCar(ctx, cam.W, cam.H, profile.probeCar, pal.sky1, U);
     }
+    G.wc.grainFrame(ctx, cam.W, cam.H, 0.1);
     ctx.restore();
   }
 

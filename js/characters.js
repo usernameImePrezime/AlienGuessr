@@ -37,6 +37,10 @@
     D: { w: 164, h: 166, name: "Gumdrop" },
     E: { w: 154, h: 156, name: "Marshmallow" },
     F: { w: 172, h: 172, name: "Ball" },
+    G: { w: 86, h: 268, name: "Stalk" },
+    H: { w: 220, h: 96, name: "Pancake" },
+    I: { w: 150, h: 230, name: "Stack" },
+    J: { w: 118, h: 248, name: "Sausage" },
   };
   const LEG_LEN = { A: 72, B: 62, C: 78, D: 26, E: 112 };
   const ARM_LEN = { A: 84, B: 74, C: 84, D: 28, E: 124 };
@@ -80,7 +84,7 @@
   }
 
   function noodle(ctx, build, color, width) {
-    pen(ctx, build, width + IW * 2.3);
+    pen(ctx, build, 2);
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -169,6 +173,24 @@
       ctx.quadraticCurveTo(cx - hw, by, cx - hw, by - r);
       ctx.quadraticCurveTo(cx - hw * 1.04, top + bh * 0.5, cx - hw, top + r);
       ctx.quadraticCurveTo(cx - hw, top, cx - hw + r, top);
+    } else if (kind === "G") {
+      ctx.moveTo(cx - hw * 0.32, by);
+      ctx.lineTo(cx - hw * 0.48, top + bh * 0.34);
+      ctx.quadraticCurveTo(cx - hw * 0.95, top + bh * 0.1, cx, top);
+      ctx.quadraticCurveTo(cx + hw * 0.95, top + bh * 0.1, cx + hw * 0.48, top + bh * 0.34);
+      ctx.lineTo(cx + hw * 0.32, by);
+    } else if (kind === "H") {
+      ctx.ellipse(cx, by - bh * 0.46, hw, bh * 0.42, 0, 0, TAU);
+    } else if (kind === "I") {
+      ctx.ellipse(cx, by - bh * 0.24, hw * 0.95, bh * 0.24, 0, 0, TAU);
+      ctx.moveTo(cx + hw * 0.58, by - bh * 0.7);
+      ctx.ellipse(cx, by - bh * 0.7, hw * 0.58, bh * 0.2, 0, 0, TAU);
+    } else if (kind === "J") {
+      const r = hw * 0.78;
+      ctx.moveTo(cx - r, top + r);
+      ctx.arc(cx, top + r, r, Math.PI, 0);
+      ctx.lineTo(cx + r, by - r);
+      ctx.arc(cx, by - r, r, 0, Math.PI);
     } else {
       ctx.moveTo(cx + hw, by - bh / 2);
       ctx.ellipse(cx, by - bh / 2, hw, bh / 2, 0, 0, TAU);
@@ -185,9 +207,14 @@
     build();
     ctx.clip();
     G.wc.wash(ctx, lit, tint.base, { mottle: 0.55, bleed: 1.6 });
-    if (kind === "A" || kind === "B" || kind === "D") {
-      G.wc.wash(ctx, () => ctx.ellipse(cx - bw * 0.04, by - bh * 0.26, bw * 0.3, bh * 0.22, 0, 0, TAU), tint.belly, { alpha: 0.75, mottle: 0.35 });
-      pen(ctx, () => ctx.arc(cx - bw * 0.04, by - bh * 0.21, bw * 0.022, 0.3, Math.PI - 0.3), 3);
+    if (kind === "A" || kind === "B" || kind === "D" || kind === "E" || kind === "F" || kind === "H" || kind === "I" || kind === "J" || kind === "C" || kind === "G") {
+      G.wc.wash(ctx, () => ctx.ellipse(cx - bw * 0.02, by - bh * 0.22, bw * 0.28, bh * 0.16, 0, 0, TAU), tint.belly, { alpha: 0.8 });
+      pen(ctx, () => ctx.arc(cx - bw * 0.02, by - bh * 0.16, bw * 0.02, 0.2, Math.PI - 0.2), 2);
+    }
+    for (let i = 0; i < 4; i++) {
+      const fx = cx + bw * ((i % 2 ? 0.16 : -0.12) + (i > 1 ? 0.05 : 0));
+      const fy = by - bh * (0.34 + (i % 3) * 0.08);
+      G.wc.wash(ctx, () => ctx.arc(fx, fy, bw * 0.035, 0, TAU), tint.shade, { alpha: 0.7 });
     }
     G.wc.bloom(ctx, cx + bw * 0.2, by - bh * 0.42, bw * 0.13, tint.shade, 0.3);
     G.wc.bloom(ctx, cx - bw * 0.1, by - bh * 0.55, bw * 0.1, tint.light, 0.4);
@@ -217,11 +244,6 @@
     }
     ctx.stroke();
     ctx.restore();
-    ctx.restore();
-    pen(ctx, build, IW * 1.05);
-    ctx.save();
-    outside(ctx, lit);
-    pen(ctx, build, IW * 1.9);
     ctx.restore();
   }
 
@@ -420,7 +442,7 @@
     if (style === "angry_blue") {
       lid(ctx, x, y, rx, ry, 0.32, tint.base, side * 0.35);
       ctx.strokeStyle = INK;
-      ctx.lineWidth = 8;
+      ctx.lineWidth = 2.4;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(x - rx * 1.1, y - ry * 1.15 - side * r * 0.35);
@@ -604,7 +626,16 @@
     }
   }
 
-  function drawLegs(ctx, kind, cx, by, bw, tint) {
+  function drawLegs(ctx, kind, cx, by, bw, tint, poseName) {
+    if (poseName === "sit") {
+      [-1, 1].forEach((s) => {
+        noodle(ctx, () => {
+          ctx.moveTo(cx + s * bw * 0.18, by);
+          ctx.quadraticCurveTo(cx + s * bw * 0.1, by + 16, cx + s * 46, by + 6);
+        }, tint.base, 12);
+      });
+      return;
+    }
     const len = LEG_LEN[kind];
     const shoe = SHOES[kind];
     const width = kind === "E" ? 12 : kind === "D" ? 26 : 18;
@@ -690,6 +721,15 @@
       if (poseName === "wave" && s === 1) {
         ex = sx + len * 0.45;
         ey = sy - len * 0.95;
+      } else if (poseName === "hips") {
+        ex = sx + s * len * 0.85;
+        ey = sy + len * 0.15;
+      } else if (poseName === "sit") {
+        ex = sx + s * len * 0.35;
+        ey = sy + len * 0.55;
+      } else if (poseName === "away") {
+        ex = sx + s * len * 0.15;
+        ey = sy + len * 0.85;
       } else if (poseName === "shrug") {
         ex = sx + s * len * 0.7;
         ey = sy - len * 0.35;
@@ -751,16 +791,20 @@
     const armKind = ARM_LEN[species.arm] ? species.arm : "A";
     const by = GY - LEG_LEN[legKind] - 4;
     const top = by - bh;
-    const poseName = pose === 1 ? "wave" : variant === 2 ? "shrug" : "relaxed";
+    const poseName = pose === 1 ? "wave" : pose === 2 ? "sit" : pose === 3 ? "away" : pose === 4 ? "hips" : variant === 2 ? "shrug" : "relaxed";
 
-    drawLegs(ctx, legKind, CX, by, bw, tint);
+    drawLegs(ctx, legKind, CX, by, bw, tint, poseName);
     drawDetail(ctx, species.detail, CX, top + (kind === "D" ? 6 : 2), bw, tint);
     drawBody(ctx, kind, CX, by, bw, bh, tint, variant);
     drawArms(ctx, armKind, CX, by, bw, bh, tint, poseName);
 
-    const faceY = top + bh * (kind === "C" ? 0.26 : kind === "B" ? 0.34 : 0.36);
+    const faceFrac = kind === "C" || kind === "G" ? 0.2 : kind === "H" ? 0.48 : kind === "I" ? 0.24 : kind === "J" ? 0.36 : kind === "B" ? 0.34 : 0.36;
+    const faceY = top + bh * faceFrac;
     const faceW = Math.min(bw, 150);
     const er = faceW * 0.2;
+    if (poseName === "away") {
+      G.wc.wash(ctx, () => ctx.ellipse(CX, faceY, faceW * 0.28, er * 1.1, 0, 0, TAU), tint.shade);
+    } else {
     const layouts = {
       1: [[0, 0, 1.45]],
       2: [[-0.26, 0, 1], [0.26, 0, 1]],
@@ -777,6 +821,7 @@
       });
     }
     drawMouth(ctx, species.mouth, CX, mouthY, faceW * 0.42, tint);
+    }
     return { canvas, footY: GY, centerX: CX, bodyH: bh };
   }
 

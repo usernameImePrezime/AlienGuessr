@@ -1296,8 +1296,8 @@
       paint(ctx, () => quadPath(ctx, front, -o, h, w + o, h + 0.45), col(roofColor), { ink: iw, glaze: col(roofColor, -20), edge: 3 * iw });
       return;
     }
-    const peak = shape === "spike" ? w * 0.75 : shape === "dome" ? w * 0.5 : w * 0.32;
-    const apexU = w / 2;
+    const peak = shape === "spike" ? w * 0.68 : shape === "dome" ? w * 0.42 : w * 0.26;
+    const apexU = w * 0.4;
     const backZ = z0 + b.depth;
     const sideRoof = () => {
       const a = view.p(xa - side * o, z0, h);
@@ -1324,7 +1324,8 @@
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           const a = Math.PI - t * Math.PI;
-          const k = shape === "dome" ? Math.sin(a) : Math.pow(Math.sin(a), 0.6);
+          const sag = 1 - 0.22 * Math.sin(t * Math.PI);
+          const k = (shape === "dome" ? Math.sin(a) : Math.pow(Math.sin(a), 0.6)) * sag;
           p = front(-o + (w + o * 2) * t, h + peak * k);
           ctx.lineTo(p.x, p.y);
         }
@@ -1662,7 +1663,14 @@
         }
       }, col(c), Math.max(0.8, lw * 0.8));
     } else {
-      paint(ctx, shaft, col(c), { ink: iw });
+      const brass = { h: 36, s: 42, l: 46 };
+      paint(ctx, shaft, col(body === "wood" || body === "crossbar" ? c : brass), { ink: iw });
+      if (body !== "wood" && body !== "crossbar") {
+        stroke(ctx, () => {
+          ctx.moveTo(base.x - w * 0.15, base.y);
+          ctx.lineTo(top.x - w * 0.1, top.y);
+        }, col(c, 8), Math.max(1.4, w * 0.35));
+      }
       if (body === "holes" && s > 6) {
         ctx.fillStyle = "rgba(40, 30, 60, 0.75)";
         for (let t = 0.1; t < 0.9; t += 0.09) {
@@ -1733,9 +1741,7 @@
   }
 
   function wires(ctx, points, U) {
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = Math.max(0.7, U * 1.1);
-    for (let k = 0; k < 2; k++) {
+    const sagLine = (k) => {
       ctx.beginPath();
       for (let i = 1; i < points.length; i++) {
         const a = points[i - 1][k];
@@ -1744,6 +1750,18 @@
         ctx.moveTo(a.x, a.y);
         ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 + sag, b.x, b.y);
       }
+    };
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#6a4a32";
+    ctx.lineWidth = Math.max(1.4, U * 1.5);
+    for (let k = 0; k < 2; k++) {
+      sagLine(k);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "#39f3ff";
+    ctx.lineWidth = Math.max(0.7, U * 0.7);
+    for (let k = 0; k < 2; k++) {
+      sagLine(k);
       ctx.stroke();
     }
   }
@@ -1945,35 +1963,46 @@
   }
 
   function hoverCar(ctx, x, y, s, color, U, rand, plateSpec) {
-    const w = s * 1.9;
-    const h = s * 0.85;
-    const lift = s * 0.38;
-    const iw = inkW(s, U);
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, w * 0.7);
-    glow.addColorStop(0, "rgba(95, 242, 255, 0.55)");
-    glow.addColorStop(1, "rgba(95, 242, 255, 0)");
+    const w = s * 2.15;
+    const h = s * 0.72;
+    const lift = s * 0.46;
+    const iw = Math.max(2.2, inkW(s, U) * 1.15);
+    const brass = { h: 38, s: 48, l: 52 };
+    const hull = mixC(brass, color || brass, 0.35);
+    const glow = ctx.createRadialGradient(x, y - lift * 0.15, 0, x, y, w * 0.55);
+    glow.addColorStop(0, "rgba(57, 243, 255, 0.45)");
+    glow.addColorStop(1, "rgba(57, 243, 255, 0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.ellipse(x, y, w * 0.7, w * 0.18, 0, 0, TAU);
+    ctx.ellipse(x, y - s * 0.02, w * 0.38, Math.max(3, s * 0.1), 0, 0, TAU);
     ctx.fill();
     const by = y - lift;
-    paint(ctx, () => ctx.ellipse(x, by - h * 0.9, w * 0.3, h * 0.42, 0, Math.PI, TAU), "rgba(190, 240, 255, 0.85)", { ink: iw });
     paint(ctx, () => {
-      ctx.moveTo(x - w / 2, by - h * 0.25);
-      ctx.quadraticCurveTo(x - w / 2, by - h, x - w * 0.2, by - h * 0.95);
-      ctx.lineTo(x + w * 0.2, by - h * 0.95);
-      ctx.quadraticCurveTo(x + w / 2, by - h, x + w / 2, by - h * 0.25);
-      ctx.quadraticCurveTo(x, by + h * 0.12, x - w / 2, by - h * 0.25);
+      ctx.moveTo(x - w * 0.48, by - h * 0.15);
+      ctx.lineTo(x - w * 0.32, by - h * 0.85);
+      ctx.lineTo(x + w * 0.22, by - h * 0.85);
+      ctx.lineTo(x + w * 0.5, by - h * 0.2);
+      ctx.lineTo(x + w * 0.46, by + h * 0.05);
+      ctx.lineTo(x - w * 0.46, by + h * 0.05);
       ctx.closePath();
-    }, col(color), { ink: iw, glaze: col(color, -22), edge: h * 0.2 });
+    }, col(hull), { ink: iw });
+    paint(ctx, () => {
+      ctx.moveTo(x - w * 0.22, by - h * 0.82);
+      ctx.lineTo(x - w * 0.08, by - h * 1.28);
+      ctx.lineTo(x + w * 0.16, by - h * 1.28);
+      ctx.lineTo(x + w * 0.28, by - h * 0.82);
+      ctx.closePath();
+    }, "#b7fbff", { ink: iw * 0.85 });
+    stroke(ctx, () => {
+      ctx.moveTo(x - w * 0.4, by - h * 0.35);
+      ctx.lineTo(x + w * 0.36, by - h * 0.35);
+    }, "#39f3ff", Math.max(2, iw * 0.65));
     [-1, 1].forEach((k) => {
-      ctx.save();
-      ctx.shadowColor = "#ff2d87";
-      ctx.shadowBlur = s * 0.3;
-      paint(ctx, () => ctx.ellipse(x + k * w * 0.34, by - h * 0.5, w * 0.08, h * 0.1, 0, 0, TAU), "#ff5a8a", { ink: iw * 0.7 });
-      ctx.restore();
+      paint(ctx, () => ctx.arc(x + k * w * 0.34, by - h * 0.05, h * 0.16, 0, TAU), "#24160f", { ink: iw * 0.7 });
+      paint(ctx, () => ctx.arc(x + k * w * 0.34, by - h * 0.05, h * 0.07, 0, TAU), col(brass, 10), { ink: iw * 0.45 });
     });
-    if (plateSpec && G.props.plate) G.props.plate(ctx, x, by - h * 0.3, w * 0.3, plateSpec, U);
+    paint(ctx, () => ctx.ellipse(x + w * 0.42, by - h * 0.48, w * 0.06, h * 0.08, 0, 0, TAU), "#ffe27a", { ink: iw * 0.5 });
+    if (plateSpec && G.props.plate) G.props.plate(ctx, x - w * 0.02, by - h * 0.08, w * 0.28, plateSpec, U);
     void rand;
   }
 
@@ -2041,12 +2070,27 @@
       return;
     }
     const k = hp / sprite.footY;
+    const dx = -sprite.centerX * k;
+    const dy = -sprite.footY * k;
+    const dw = sprite.canvas.width * k;
+    const dh = sprite.canvas.height * k;
     ctx.save();
     ctx.translate(x, y);
     if (a.tilt) ctx.rotate(a.tilt);
     if (a.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(sprite.canvas, -sprite.centerX * k, -sprite.footY * k, sprite.canvas.width * k, sprite.canvas.height * k);
+    ctx.shadowColor = "#3c345c";
+    ctx.shadowBlur = 0;
+    const halo = 1.4;
+    [[halo, 0], [-halo, 0], [0, halo], [0, -halo], [halo, halo], [halo, -halo], [-halo, halo], [-halo, -halo]].forEach(([ox, oy]) => {
+      ctx.shadowOffsetX = ox;
+      ctx.shadowOffsetY = oy;
+      ctx.drawImage(sprite.canvas, dx, dy, dw, dh);
+    });
+    ctx.shadowColor = "transparent";
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.drawImage(sprite.canvas, dx, dy, dw, dh);
     ctx.restore();
   }
 
@@ -2090,12 +2134,13 @@
     const H = Math.max(8, h * s);
     const iw = Math.max(2.6, inkW(s, U) * 1.3);
     const kind = style || "oak";
+    const lean = H * 0.14;
     const top = y - H * 0.42;
-    paint(ctx, () => {
-      ctx.moveTo(x - H * 0.07, y);
-      ctx.lineTo(x - H * 0.035, top);
-      ctx.lineTo(x + H * 0.035, top);
-      ctx.lineTo(x + H * 0.07, y);
+    if (kind !== "cactus") paint(ctx, () => {
+      ctx.moveTo(x - H * 0.08, y);
+      ctx.lineTo(x - H * 0.02 + lean, top);
+      ctx.lineTo(x + H * 0.06 + lean, top);
+      ctx.lineTo(x + H * 0.08, y);
       ctx.closePath();
     }, col(trunk), { ink: iw });
     const fillBlob = (cx, cy, rx, ry, c) => {
@@ -2127,15 +2172,18 @@
       return;
     }
     if (kind === "lollipop") {
-      fillBlob(x, top - H * 0.28, H * 0.34, H * 0.32, color);
-      fillBlob(x + H * 0.04, top - H * 0.08, H * 0.2, H * 0.1, shade(color, -16));
-      paint(ctx, () => ctx.ellipse(x, top - H * 0.28, H * 0.34, H * 0.32, 0, 0, TAU), "rgba(0,0,0,0)", { ink: iw });
+      fillBlob(x + lean * 0.4, top - H * 0.3, H * 0.42, H * 0.3, color);
+      fillBlob(x + H * 0.08 + lean * 0.2, top - H * 0.08, H * 0.16, H * 0.1, shade(color, -16));
+      paint(ctx, () => ctx.ellipse(x + lean * 0.4, top - H * 0.3, H * 0.42, H * 0.3, 0, 0, TAU), "rgba(0,0,0,0)", { ink: iw });
       return;
     }
     const lobes = kind === "jelly"
       ? [[0, -0.28, 0.26, 0.2], [-0.18, -0.14, 0.16, 0.14], [0.18, -0.12, 0.15, 0.13], [0.02, -0.02, 0.2, 0.12], [-0.08, -0.36, 0.12, 0.1]]
       : [[0, -0.34, 0.2, 0.16], [-0.2, -0.16, 0.16, 0.14], [0.2, -0.14, 0.15, 0.13], [-0.06, -0.22, 0.14, 0.12], [0.08, -0.06, 0.16, 0.12], [-0.12, -0.02, 0.12, 0.1], [0.16, -0.26, 0.1, 0.09]];
-    lobes.forEach(([ox, oy, rx, ry]) => fillBlob(x + ox * H, top + oy * H, rx * H, ry * H, color));
+    lobes.forEach(([ox, oy, rx, ry], index) => {
+      const bulge = index === 0 ? 1.28 : 1;
+      fillBlob(x + ox * H + lean * 0.35, top + oy * H, rx * H * bulge, ry * H, color);
+    });
     fillBlob(x, top + H * 0.02, H * 0.22, H * 0.08, shade(color, -16));
     paint(ctx, () => {
       ctx.moveTo(x, top - H * 0.52);
@@ -2181,22 +2229,66 @@
     const s = view.p(inner, z0, 0).s;
     if (s < 1.1) return;
     const iw = Math.max(2.6, inkW(s, U) * 1.15);
+    const material = b.material || "wood";
     const style = b.style || "siding";
     const color = b.wall || { h: 30, s: 20, l: 70 };
     const panes = b.panes || 2;
-    const glass = col({ h: 198, s: 42, l: 74 });
-    paint(ctx, () => quadPath(ctx, wall, 0, 0, d, h), col(color, -18), { ink: iw });
+    const glass = material === "metal" ? "#7ef0ff" : col({ h: 198, s: 42, l: 74 });
+    paint(ctx, () => {
+      const a = wall(0, 0);
+      const b = wall(d, 0);
+      const c = wall(d, h * 0.86);
+      const dd = wall(0, h);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(dd.x, dd.y);
+      ctx.closePath();
+    }, col(color, -18), { ink: iw });
     paint(ctx, () => quadPath(ctx, wall, 0, 0, d, 0.4), col(color, -32), { ink: iw * 0.65 });
-    if (style === "siding" || style === "rust") {
+    if (material === "metal") {
       stroke(ctx, () => {
-        for (let k = 1; k <= 4; k++) {
-          const v = 0.55 + ((h - 0.9) * k) / 5;
-          const a = wall(0.25, v);
-          const c = wall(d - 0.25, v);
+        for (let k = 1; k <= 5; k++) {
+          const u = (d * k) / 6;
+          const a = wall(u, 0.45);
+          const c = wall(u, h - 0.2);
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(c.x, c.y);
         }
-      }, col(color, -26), Math.max(1.4, iw * 0.5));
+      }, col(color, 18), Math.max(1.3, iw * 0.45));
+      const neonA = wall(0.3, h * 0.78);
+      const neonB = wall(d - 0.3, h * 0.78);
+      stroke(ctx, () => {
+        ctx.moveTo(neonA.x, neonA.y);
+        ctx.lineTo(neonB.x, neonB.y);
+      }, "#39f3ff", Math.max(2, iw * 0.7));
+    } else if (material === "stone") {
+      stroke(ctx, () => {
+        for (let k = 1; k <= 4; k++) {
+          const v = (h * k) / 5;
+          const a = wall(0.15, v);
+          const c = wall(d - 0.15, v);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(c.x, c.y);
+        }
+        for (let k = 1; k <= 4; k++) {
+          const u = (d * k) / 5;
+          const a = wall(u, 0.4);
+          const c = wall(u, h - 0.15);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(c.x, c.y);
+        }
+      }, col(color, -22), Math.max(1.2, iw * 0.4));
+    } else {
+      stroke(ctx, () => {
+        for (let k = 1; k <= 6; k++) {
+          const v = 0.32 + ((h - 0.7) * k) / 7 + (k % 2 ? 0.16 : -0.06);
+          const a = wall(0.15, v);
+          const c = wall(d - 0.15, v);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(c.x, c.y);
+        }
+      }, "#4a2c16", Math.max(1.5, iw * 0.5));
     }
     const along = d > 8 ? 2 : 1;
     for (let i = 0; i < along; i++) {
@@ -2208,7 +2300,7 @@
     paint(ctx, () => quadPath(ctx, wall, doorU + doorW * 0.18, 0.4, doorU + doorW * 0.82, 1.2), col(color, -20), { ink: iw * 0.55 });
     const knob = wall(doorU + doorW * 0.78, 1.05);
     paint(ctx, () => ctx.arc(knob.x, knob.y, Math.max(1.5, s * 0.065), 0, TAU), "#f2d15a", { ink: iw * 0.5 });
-    if (b.awning && style !== "rust") {
+    if (b.awning) {
       for (let i = 0; i < 4; i++) {
         const u0 = doorU - 0.25 + ((doorW + 0.6) * i) / 4;
         const u1 = doorU - 0.25 + ((doorW + 0.6) * (i + 1)) / 4;
@@ -2240,10 +2332,45 @@
       ctx.lineTo(dd.x, dd.y);
       ctx.closePath();
     }, col(b.roof || color, -6), { ink: iw * 0.85 });
+    if (b.balcony) {
+      const yv = Math.max(1.8, h * 0.48);
+      paint(ctx, () => {
+        const a = view.p(inner, z0 + 0.25, yv);
+        const bb = view.p(inner, z0 + d * 0.78, yv);
+        const c = view.p(inner - side * 1.35, z0 + d * 0.78, yv - 0.12);
+        const dd = view.p(inner - side * 1.35, z0 + 0.25, yv - 0.12);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(bb.x, bb.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.lineTo(dd.x, dd.y);
+        ctx.closePath();
+      }, col(b.awning || color, 16), { ink: iw * 0.75 });
+      stroke(ctx, () => {
+        const a = view.p(inner - side * 1.35, z0 + 0.3, yv + 0.55);
+        const bb = view.p(inner - side * 1.35, z0 + d * 0.75, yv + 0.55);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(bb.x, bb.y);
+      }, INK, Math.max(2, iw * 0.7));
+    }
+    if (b.roofKind && b.roofKind !== "flat") {
+      const peak = b.roofKind === "spike" ? h * 0.55 : b.roofKind === "dome" ? h * 0.22 : h * 0.34;
+      paint(ctx, () => {
+        const a = wall(0.05, h);
+        const mid = wall(d * 0.5, h + peak);
+        const c = wall(d - 0.05, h * 0.9);
+        ctx.moveTo(a.x, a.y);
+        if (b.roofKind === "dome") ctx.quadraticCurveTo(mid.x, mid.y, c.x, c.y);
+        else {
+          ctx.lineTo(mid.x, mid.y);
+          ctx.lineTo(c.x, c.y);
+        }
+        ctx.closePath();
+      }, col(b.roof || color, 8), { ink: iw });
+    }
     b.width = w;
     b.height = h;
     b.depth = d;
-    b.roofShape = style === "round" || style === "blob" ? "dome" : style === "rust" ? "flat" : "gable";
+    b.roofShape = b.roofKind || (material === "metal" ? "flat" : "gable");
     roofOnFront(ctx, view, b, iw, b.roof || color);
     if (b.chimney) {
       paint(ctx, () => quadPath(ctx, front, w * 0.62, h * 0.78, w * 0.62 + 0.5, h + 1.25), col({ h: 12, s: 36, l: 40 }), { ink: iw * 0.75 });
@@ -2358,6 +2485,1047 @@
     wonderPlaque(ctx, base.x, ground - s * 0.05, s, U);
   }
 
+  // Latitude flora. Fills go through paint() so the outline stays a thin pencil and the wash puddles.
+  function floraInk(U) {
+    return 1.55 * (U || 1);
+  }
+
+  const FLORA = {
+    magenta: { h: 324, s: 80, l: 56 },
+    teal: { h: 174, s: 74, l: 44 },
+    acid: { h: 63, s: 96, l: 58 },
+    lavender: { h: 274, s: 56, l: 74 },
+    copper: { h: 22, s: 72, l: 48 },
+  };
+
+  function tube(ctx, pts, w0, w1, color, iw) {
+    if (!pts || pts.length < 2) return;
+    const left = [];
+    const right = [];
+    for (let i = 0; i < pts.length; i++) {
+      const o = pts[Math.max(0, i - 1)];
+      const q = pts[Math.min(pts.length - 1, i + 1)];
+      let dx = q.x - o.x;
+      let dy = q.y - o.y;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len;
+      dy /= len;
+      const t = i / (pts.length - 1);
+      const w = w0 + (w1 - w0) * t;
+      left.push({ x: pts[i].x - dy * w, y: pts[i].y + dx * w });
+      right.push({ x: pts[i].x + dy * w, y: pts[i].y - dx * w });
+    }
+    paint(ctx, () => {
+      ctx.moveTo(left[0].x, left[0].y);
+      for (let i = 1; i < left.length; i++) ctx.lineTo(left[i].x, left[i].y);
+      for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+      ctx.closePath();
+    }, col(color), { ink: iw });
+  }
+
+  function bead(ctx, x, y, r, color, iw) {
+    const rr = Math.max(0.8, r);
+    paint(ctx, () => ctx.arc(x, y, rr, 0, TAU), col(color), { ink: iw });
+    paint(ctx, () => ctx.arc(x - rr * 0.28, y - rr * 0.32, Math.max(0.4, rr * 0.28), 0, TAU), "rgba(255, 252, 246, 0.7)");
+  }
+
+  function flare(ctx, x0, y0, x1, y1, w0, w1, color, iw) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const px = dx / len;
+    const py = dy / len;
+    paint(ctx, () => {
+      ctx.moveTo(x0 + nx * w0, y0 + ny * w0);
+      ctx.lineTo(x1 + nx * w1, y1 + ny * w1);
+      ctx.quadraticCurveTo(x1 + px * w1 * 0.45, y1 + py * w1 * 0.45, x1 - nx * w1, y1 - ny * w1);
+      ctx.lineTo(x0 - nx * w0, y0 - ny * w0);
+      ctx.closePath();
+    }, col(color), { ink: iw });
+  }
+
+  function copperFunnel(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const lean = (rand() - 0.5) * H * 0.16;
+    const mouths = [0.38, 0.66, 0.94].map((t, i) => ({
+      y: y - H * t,
+      x: x + lean * t,
+      w: H * (0.08 + i * 0.055),
+      neck: H * (0.035 + i * 0.008),
+      drip: rand() < 0.75,
+    }));
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.045);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.02, H * 0.16, H * 0.045, 0, 0, TAU), col(FLORA.copper, -8), { ink: iw });
+    tube(ctx, [{ x, y }, { x: x + lean * 0.5, y: y - H * 0.5 }, mouths[2]], H * 0.04, H * 0.028, FLORA.copper, iw);
+    mouths.forEach((m) => {
+      flare(ctx, m.x, m.y - H * 0.06, m.x, m.y + H * 0.02, m.neck, m.w, FLORA.copper, iw);
+      paint(ctx, () => ctx.ellipse(m.x, m.y + H * 0.01, m.w * 0.72, m.w * 0.28, 0, 0, TAU), col(FLORA.magenta), { ink: iw });
+      if (m.drip) bead(ctx, m.x + m.w * 0.2, m.y + H * 0.08, H * 0.022, FLORA.magenta, iw);
+    });
+    bead(ctx, mouths[2].x, mouths[2].y - H * 0.1, H * 0.03, FLORA.acid, iw);
+  }
+
+  function acidLantern(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const hook = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      hook.push({ x: x + Math.sin(t * 2.4) * H * 0.2, y: y - Math.pow(t, 0.92) * H });
+    }
+    const lamps = [0.34, 0.58, 0.84].map((t) => {
+      const p = hook[Math.round(t * 16)];
+      return {
+        x: p.x + H * (0.12 + rand() * 0.06),
+        y: p.y,
+        rx: H * (0.065 + rand() * 0.02),
+        ry: H * (0.095 + rand() * 0.025),
+        hang: p,
+      };
+    });
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, hook, H * 0.032, H * 0.018, FLORA.teal, iw);
+    lamps.forEach((lamp) => {
+      tube(ctx, [lamp.hang, { x: lamp.x, y: lamp.y - lamp.ry }], H * 0.01, H * 0.01, FLORA.copper, iw);
+      paint(ctx, () => ctx.ellipse(lamp.x, lamp.y, lamp.rx * 1.15, H * 0.018, 0, 0, TAU), col(FLORA.copper), { ink: iw });
+      paint(ctx, () => ctx.ellipse(lamp.x, lamp.y, lamp.rx, lamp.ry, 0, 0, TAU), col(FLORA.acid), { ink: iw });
+      paint(ctx, () => ctx.ellipse(lamp.x - lamp.rx * 0.2, lamp.y - lamp.ry * 0.25, lamp.rx * 0.28, lamp.ry * 0.35, -0.4, 0, TAU), col(FLORA.acid, 16, -30, 0.75));
+      stroke(ctx, () => {
+        ctx.moveTo(lamp.x - lamp.rx * 0.7, lamp.y);
+        ctx.quadraticCurveTo(lamp.x, lamp.y + lamp.ry * 0.15, lamp.x + lamp.rx * 0.7, lamp.y);
+      }, INK, iw * 0.75);
+      tube(ctx, [
+        { x: lamp.x, y: lamp.y + lamp.ry },
+        { x: lamp.x + H * 0.03, y: lamp.y + lamp.ry + H * 0.07 },
+      ], H * 0.008, H * 0.016, FLORA.lavender, iw);
+    });
+  }
+
+  function magentaBellows(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const n = 5 + Math.floor(rand() * 2);
+    const lean = (rand() - 0.5) * H * 0.2;
+    const folds = [];
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n;
+      const t1 = (i + 1) / n;
+      folds.push({
+        x: x + lean * t0,
+        y0: y - H * 0.78 * t0,
+        y1: y - H * 0.78 * t1,
+        w: H * (i % 2 ? 0.09 : 0.2),
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.22, H * 0.045);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.02, H * 0.12, H * 0.04, 0, 0, TAU), col(FLORA.copper, -6), { ink: iw });
+    folds.forEach((f) => {
+      paint(ctx, () => {
+        ctx.moveTo(f.x - f.w, f.y0);
+        ctx.lineTo(f.x - f.w * 0.72, f.y1);
+        ctx.lineTo(f.x + f.w * 0.72, f.y1);
+        ctx.lineTo(f.x + f.w, f.y0);
+        ctx.closePath();
+      }, col(iTone(f.w, H)), { ink: iw });
+      bead(ctx, f.x + f.w * 0.82, (f.y0 + f.y1) / 2, H * 0.016, FLORA.copper, iw);
+    });
+    const top = folds[folds.length - 1];
+    paint(ctx, () => ctx.rect(top.x - H * 0.04, top.y1 - H * 0.08, H * 0.08, H * 0.08), col(FLORA.teal), { ink: iw });
+    paint(ctx, () => ctx.ellipse(top.x, top.y1 - H * 0.1, H * 0.07, H * 0.03, 0, 0, TAU), col(FLORA.acid), { ink: iw });
+    function iTone(w, height) {
+      return w > height * 0.14 ? FLORA.magenta : shade(FLORA.magenta, -8, 6);
+    }
+  }
+
+  function lavenderSpoon(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const lean = (rand() - 0.5) * 0.35;
+    const spoons = [-0.85, 0.05, 0.8].map((tilt, i) => {
+      const hy = H * (0.4 + i * 0.22);
+      return {
+        x: x + lean * hy * 0.12,
+        y: y - hy,
+        rot: tilt * 1.05,
+        bowl: H * (0.15 + rand() * 0.02),
+        handle: H * (0.22 + i * 0.03),
+      };
+    });
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + lean * H * 0.08, y: y - H }], H * 0.028, H * 0.016, FLORA.copper, iw);
+    spoons.forEach((sp) => {
+      const hx = sp.x + Math.cos(sp.rot) * sp.handle;
+      const hy = sp.y + Math.sin(sp.rot) * sp.handle * 0.35;
+      tube(ctx, [{ x: sp.x, y: sp.y }, { x: hx, y: hy }], H * 0.012, H * 0.02, FLORA.lavender, iw);
+      paint(ctx, () => ctx.ellipse(hx, hy, sp.bowl, sp.bowl * 0.62, sp.rot, 0, TAU), col(FLORA.lavender, 4), { ink: iw });
+      bead(ctx, hx - Math.cos(sp.rot) * sp.bowl * 0.15, hy - sp.bowl * 0.05, sp.bowl * 0.32, FLORA.acid, iw);
+    });
+  }
+
+  function tealCorkscrew(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const turns = 3 + Math.floor(rand() * 2);
+    const pts = [];
+    const beads = [];
+    const n = 32;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const a = t * turns * TAU + 0.4;
+      pts.push({
+        x: x + Math.cos(a) * H * (0.1 + t * 0.05),
+        y: y - t * H * 0.92,
+      });
+      if (i % 5 === 3) beads.push(pts[pts.length - 1]);
+    }
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.045);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.015, H * 0.16, H * 0.04, 0, 0, TAU), col(FLORA.copper), { ink: iw });
+    for (let i = 0; i < pts.length - 1; i += 2) {
+      tube(ctx, [pts[i], pts[i + 1]], H * 0.03, H * 0.024, FLORA.teal, iw);
+    }
+    beads.forEach((b, i) => bead(ctx, b.x, b.y, H * 0.028, i % 2 ? FLORA.magenta : FLORA.acid, iw));
+    const tip = pts[pts.length - 1];
+    paint(ctx, () => {
+      ctx.moveTo(tip.x, tip.y - H * 0.07);
+      ctx.lineTo(tip.x + H * 0.045, tip.y);
+      ctx.lineTo(tip.x, tip.y + H * 0.02);
+      ctx.lineTo(tip.x - H * 0.045, tip.y);
+      ctx.closePath();
+    }, col(FLORA.acid), { ink: iw });
+  }
+
+  function yolkUmbrella(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const lean = (rand() - 0.5) * H * 0.12;
+    const top = { x: x + lean, y: y - H * 0.72 };
+    const rx = H * (0.34 + rand() * 0.06);
+    const scallops = 7;
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + lean * 0.4, y: y - H * 0.4 }, top], H * 0.03, H * 0.02, FLORA.copper, iw);
+    paint(ctx, () => {
+      ctx.moveTo(top.x - rx, top.y);
+      ctx.ellipse(top.x, top.y, rx, rx * 0.72, 0, Math.PI, TAU, false);
+      ctx.closePath();
+    }, col(FLORA.acid), { ink: iw });
+    for (let i = 0; i < scallops; i++) {
+      const t = (i + 0.5) / scallops;
+      const a = Math.PI + t * Math.PI;
+      const sx = top.x + Math.cos(a) * rx * 0.92;
+      const sy = top.y + Math.sin(a) * rx * 0.62;
+      bead(ctx, sx, sy + H * 0.03, H * 0.018, i % 2 ? FLORA.teal : FLORA.magenta, iw);
+    }
+    stroke(ctx, () => {
+      for (let i = 1; i < 4; i++) {
+        const dx = (i - 2) * rx * 0.28;
+        ctx.moveTo(top.x + dx * 0.15, top.y - rx * 0.05);
+        ctx.quadraticCurveTo(top.x + dx, top.y - rx * 0.4, top.x + dx * 1.15, top.y - rx * 0.62);
+      }
+    }, INK, iw * 0.7);
+    paint(ctx, () => ctx.ellipse(top.x, top.y - rx * 0.08, H * 0.04, H * 0.025, 0, 0, TAU), col(FLORA.lavender), { ink: iw });
+  }
+
+  function zipperVine(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const dir = rand() < 0.5 ? -1 : 1;
+    const pts = [];
+    for (let i = 0; i <= 18; i++) {
+      const t = i / 18;
+      pts.push({
+        x: x + dir * Math.sin(t * Math.PI) * H * 0.28,
+        y: y - t * H * 0.95,
+      });
+    }
+    const teeth = [];
+    for (let i = 2; i < pts.length - 2; i += 2) {
+      const p = pts[i];
+      const q = pts[i + 1];
+      const dx = q.x - pts[i - 1].x;
+      const dy = q.y - pts[i - 1].y;
+      const len = Math.hypot(dx, dy) || 1;
+      const side = i % 4 === 2 ? 1 : -1;
+      teeth.push({
+        x: p.x + (-dy / len) * side * H * 0.07,
+        y: p.y + (dx / len) * side * H * 0.07,
+        w: H * 0.028,
+      });
+    }
+    const pull = pts[6];
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, pts, H * 0.045, H * 0.03, FLORA.magenta, iw);
+    teeth.forEach((t, i) => {
+      paint(ctx, () => {
+        ctx.moveTo(t.x, t.y - t.w);
+        ctx.lineTo(t.x + t.w, t.y + t.w * 0.6);
+        ctx.lineTo(t.x - t.w, t.y + t.w * 0.6);
+        ctx.closePath();
+      }, col(i % 2 ? FLORA.copper : FLORA.acid), { ink: iw });
+    });
+    paint(ctx, () => ctx.rect(pull.x - H * 0.03, pull.y - H * 0.06, H * 0.1, H * 0.12), col(FLORA.teal), { ink: iw });
+    paint(ctx, () => ctx.arc(pull.x + H * 0.02, pull.y, H * 0.018, 0, TAU), col(FLORA.lavender), { ink: iw });
+  }
+
+  function bubbleChimney(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const n = 4 + Math.floor(rand() * 2);
+    const bubbles = [];
+    let yy = y - H * 0.08;
+    for (let i = 0; i < n; i++) {
+      const r = H * (0.16 - i * 0.018);
+      yy -= r * 1.15;
+      bubbles.push({ x: x + (rand() - 0.5) * H * 0.04, y: yy, r });
+      yy -= r * 0.55;
+    }
+    shadowBlob(ctx, x, y, H * 0.18, H * 0.04);
+    paint(ctx, () => {
+      ctx.moveTo(x - H * 0.12, y);
+      ctx.lineTo(x - H * 0.08, y - H * 0.12);
+      ctx.lineTo(x + H * 0.08, y - H * 0.12);
+      ctx.lineTo(x + H * 0.12, y);
+      ctx.closePath();
+    }, col(FLORA.teal), { ink: iw });
+    bubbles.forEach((b, i) => {
+      paint(ctx, () => ctx.arc(b.x, b.y, b.r, 0, TAU), col(FLORA.lavender, i * 2), { ink: iw });
+      paint(ctx, () => ctx.ellipse(b.x - b.r * 0.28, b.y - b.r * 0.32, b.r * 0.22, b.r * 0.16, -0.5, 0, TAU), "rgba(255, 252, 246, 0.55)");
+    });
+    const mid = bubbles[1] || bubbles[0];
+    paint(ctx, () => ctx.rect(mid.x - mid.r * 1.05, mid.y - H * 0.018, mid.r * 2.1, H * 0.036), col(FLORA.copper), { ink: iw });
+    const top = bubbles[bubbles.length - 1];
+    [-0.4, 0.1, 0.45].forEach((dx, i) => {
+      bead(ctx, top.x + dx * H * 0.12, top.y - top.r - H * (0.04 + i * 0.02), H * (0.03 - i * 0.004), FLORA.acid, iw);
+    });
+  }
+
+  function hornedPod(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const rot = (rand() - 0.5) * 0.4;
+    const horns = [-1, 1].map((side) => {
+      const a = -1.1 + side * 0.45 + (rand() - 0.5) * 0.2;
+      return [
+        { x: x + side * H * 0.08, y: y - H * 0.55 },
+        { x: x + side * H * 0.22 + Math.cos(a) * H * 0.12, y: y - H * 0.78 },
+        { x: x + Math.cos(a) * H * 0.28 * side, y: y - H * (0.95 + rand() * 0.08) },
+      ];
+    });
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.045);
+    tube(ctx, [{ x: x - H * 0.04, y }, { x, y: y - H * 0.2 }], H * 0.04, H * 0.05, FLORA.teal, iw);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.42, H * 0.2, H * 0.28, rot, 0, TAU), col(FLORA.copper), { ink: iw });
+    paint(ctx, () => ctx.ellipse(x - H * 0.06, y - H * 0.52, H * 0.06, H * 0.1, rot - 0.4, 0, TAU), col(FLORA.copper, 14, -10, 0.65));
+    horns.forEach((pts) => tube(ctx, pts, H * 0.028, H * 0.012, FLORA.lavender, iw));
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4;
+      stroke(ctx, () => {
+        const yy = y - H * (0.28 + t * 0.28);
+        ctx.moveTo(x - H * 0.08, yy);
+        ctx.lineTo(x + H * 0.08, yy + H * 0.03);
+      }, INK, iw * 0.65);
+    }
+    bead(ctx, x, y - H * 0.42, H * 0.03, FLORA.magenta, iw);
+  }
+
+  function tromboneBloom(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const dir = rand() < 0.5 ? -1 : 1;
+    const pts = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const a = t * Math.PI * 1.35;
+      pts.push({
+        x: x + dir * (Math.sin(a) * H * 0.28 + t * H * 0.05),
+        y: y - t * H * 0.78 - Math.cos(a) * H * 0.06,
+      });
+    }
+    const bell = pts[pts.length - 1];
+    const prev = pts[pts.length - 4];
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, pts, H * 0.032, H * 0.02, FLORA.copper, iw);
+    flare(ctx, prev.x, prev.y, bell.x + dir * H * 0.04, bell.y - H * 0.02, H * 0.03, H * 0.11, FLORA.magenta, iw);
+    paint(ctx, () => ctx.ellipse(bell.x + dir * H * 0.08, bell.y - H * 0.02, H * 0.05, H * 0.1, dir * 0.4, 0, TAU), col(FLORA.magenta, 8), { ink: iw });
+    for (let i = 0; i < 3; i++) {
+      const p = pts[8 + i * 2];
+      bead(ctx, p.x + dir * H * 0.06, p.y, H * 0.018, FLORA.teal, iw);
+    }
+    paint(ctx, () => ctx.rect(x - H * 0.05, y - H * 0.08, H * 0.14, H * 0.035), col(FLORA.acid), { ink: iw });
+  }
+
+  function stackedHats(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const lean = (rand() - 0.5) * H * 0.08;
+    const hats = [0.34, 0.58, 0.84].map((t, i) => ({
+      x: x + lean * t,
+      y: y - H * t,
+      brim: H * (0.2 - i * 0.03),
+      crown: H * (0.14 - i * 0.015),
+    }));
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, hats[2]], H * 0.026, H * 0.016, FLORA.teal, iw);
+    hats.forEach((hat) => {
+      paint(ctx, () => ctx.ellipse(hat.x, hat.y, hat.brim, hat.brim * 0.28, 0, 0, TAU), col(FLORA.acid), { ink: iw });
+      paint(ctx, () => {
+        ctx.moveTo(hat.x - hat.crown * 0.55, hat.y);
+        ctx.lineTo(hat.x - hat.crown * 0.4, hat.y - hat.crown);
+        ctx.lineTo(hat.x + hat.crown * 0.4, hat.y - hat.crown);
+        ctx.lineTo(hat.x + hat.crown * 0.55, hat.y);
+        ctx.closePath();
+      }, col(FLORA.acid, 6), { ink: iw });
+      paint(ctx, () => ctx.rect(hat.x - hat.crown * 0.48, hat.y - hat.crown * 0.42, hat.crown * 0.96, hat.crown * 0.16), col(FLORA.lavender), { ink: iw * 0.8 });
+    });
+    bead(ctx, hats[2].x, hats[2].y - hats[2].crown - H * 0.02, H * 0.035, FLORA.magenta, iw);
+  }
+
+  function waffleFan(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const hub = { x, y: y - H * 0.62 };
+    const discs = [];
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI + (i / (n - 1)) * Math.PI;
+      discs.push({
+        x: hub.x + Math.cos(a) * H * 0.24,
+        y: hub.y + Math.sin(a) * H * 0.16 - H * 0.05,
+        r: H * (0.09 + rand() * 0.015),
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + H * 0.02, y: hub.y }], H * 0.028, H * 0.02, FLORA.magenta, iw);
+    discs.forEach((d) => {
+      paint(ctx, () => ctx.arc(d.x, d.y, d.r, 0, TAU), col(FLORA.lavender), { ink: iw });
+      stroke(ctx, () => {
+        ctx.moveTo(d.x - d.r * 0.7, d.y);
+        ctx.lineTo(d.x + d.r * 0.7, d.y);
+        ctx.moveTo(d.x, d.y - d.r * 0.7);
+        ctx.lineTo(d.x, d.y + d.r * 0.7);
+      }, INK, iw * 0.6);
+    });
+    bead(ctx, hub.x, hub.y, H * 0.045, FLORA.copper, iw);
+    bead(ctx, hub.x, hub.y, H * 0.02, FLORA.acid, iw);
+  }
+
+  function coilFountain(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const coils = 4 + Math.floor(rand() * 2);
+    const rings = [];
+    for (let i = 0; i < coils; i++) {
+      rings.push({
+        y: y - H * (0.16 + i * 0.12),
+        rx: H * (0.12 + (i % 2) * 0.035),
+        ry: H * 0.045,
+      });
+    }
+    const drops = [-0.2, 0.05, 0.22].map((dx, i) => ({
+      x: x + dx * H,
+      y: y - H * (0.78 + i * 0.06 + rand() * 0.04),
+      r: H * (0.028 + (i % 2) * 0.008),
+    }));
+    shadowBlob(ctx, x, y, H * 0.22, H * 0.045);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.04, H * 0.22, H * 0.07, 0, 0, TAU), col(FLORA.copper), { ink: iw });
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.06, H * 0.12, H * 0.035, 0, 0, TAU), col(FLORA.teal, -8), { ink: iw });
+    rings.forEach((r) => {
+      paint(ctx, () => {
+        ctx.ellipse(x, r.y, r.rx, r.ry, 0, 0, TAU, false);
+        ctx.ellipse(x, r.y, r.rx * 0.62, r.ry * 0.55, 0, 0, TAU, true);
+      }, col(FLORA.teal), { ink: iw });
+    });
+    drops.forEach((d) => bead(ctx, d.x, d.y, d.r, FLORA.magenta, iw));
+    bead(ctx, x, rings[rings.length - 1].y - H * 0.08, H * 0.03, FLORA.acid, iw);
+  }
+
+  function mittenShrub(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const mittens = [-1.1, -0.35, 0.4, 1.15].map((t) => ({
+      x: x + t * H * 0.16,
+      y: y - H * (0.15 + rand() * 0.12),
+      rot: t * 0.35 + (rand() - 0.5) * 0.2,
+      w: H * (0.11 + rand() * 0.02),
+      hh: H * (0.28 + rand() * 0.08),
+      flip: t > 0 ? 1 : -1,
+    }));
+    shadowBlob(ctx, x, y, H * 0.28, H * 0.045);
+    mittens.forEach((m) => {
+      tube(ctx, [{ x: m.x, y }, { x: m.x, y: m.y }], H * 0.02, H * 0.028, FLORA.copper, iw);
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(m.rot);
+      paint(ctx, () => {
+        ctx.moveTo(-m.w * 0.45, 0);
+        ctx.quadraticCurveTo(-m.w * 0.7, -m.hh * 0.45, -m.w * 0.2, -m.hh * 0.82);
+        ctx.quadraticCurveTo(m.w * 0.15, -m.hh, m.w * 0.35, -m.hh * 0.62);
+        ctx.lineTo(m.w * 0.4, -m.hh * 0.4);
+        ctx.quadraticCurveTo(m.flip * m.w * 1.15, -m.hh * 0.55, m.flip * m.w * 0.95, -m.hh * 0.22);
+        ctx.quadraticCurveTo(m.w * 0.45, -m.hh * 0.12, m.w * 0.42, 0);
+        ctx.closePath();
+      }, col(FLORA.magenta), { ink: iw });
+      paint(ctx, () => ctx.rect(-m.w * 0.42, -m.hh * 0.16, m.w * 0.84, m.hh * 0.1), col(FLORA.lavender), { ink: iw * 0.75 });
+      ctx.restore();
+    });
+  }
+
+  function dishBloom(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const lean = (rand() - 0.5) * H * 0.1;
+    const bowl = { x: x + lean, y: y - H * 0.62 };
+    const rx = H * 0.28;
+    const focus = { x: bowl.x + H * 0.02, y: bowl.y - H * 0.16 };
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.045);
+    [-0.7, 0, 0.7].forEach((t) => {
+      tube(ctx, [
+        { x: x + t * H * 0.12, y },
+        { x: bowl.x + t * H * 0.04, y: bowl.y },
+      ], H * 0.018, H * 0.012, FLORA.teal, iw);
+    });
+    paint(ctx, () => {
+      ctx.moveTo(bowl.x - rx, bowl.y);
+      ctx.ellipse(bowl.x, bowl.y, rx, rx * 0.55, 0, 0, Math.PI, false);
+      ctx.closePath();
+    }, col(FLORA.copper), { ink: iw });
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 4) * Math.PI;
+      bead(ctx, bowl.x - rx + (rx * 2 * i) / 4, bowl.y + Math.sin(a) * rx * 0.08, H * 0.012, FLORA.lavender, iw);
+    }
+    tube(ctx, [bowl, focus], H * 0.012, H * 0.01, FLORA.teal, iw);
+    bead(ctx, focus.x, focus.y, H * 0.04, FLORA.acid, iw);
+  }
+
+  function accordionKelp(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const n = 8 + Math.floor(rand() * 3);
+    const amp = H * (0.1 + rand() * 0.04);
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      pts.push({
+        x: x + (i % 2 ? amp : -amp * 0.35),
+        y: y - (i / n) * H * 0.92,
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, pts, H * 0.055, H * 0.03, FLORA.lavender, iw);
+    pts.forEach((p, i) => {
+      if (i % 2 === 1) bead(ctx, p.x + amp * 0.55, p.y, H * 0.016, FLORA.copper, iw);
+    });
+    const tip = pts[pts.length - 1];
+    paint(ctx, () => {
+      ctx.moveTo(tip.x, tip.y);
+      ctx.lineTo(tip.x + H * 0.12, tip.y - H * 0.03);
+      ctx.lineTo(tip.x + H * 0.02, tip.y + H * 0.05);
+      ctx.closePath();
+    }, col(FLORA.teal), { ink: iw });
+  }
+
+  function parasolSquid(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const top = y - H * 0.78;
+    const rx = H * (0.32 + rand() * 0.05);
+    const n = 4 + Math.floor(rand() * 2);
+    const tassels = [];
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const bx = x - rx * 0.8 + t * rx * 1.6;
+      tassels.push({
+        x: bx,
+        y0: top + H * 0.02,
+        y1: top + H * (0.16 + rand() * 0.1),
+        sway: (rand() - 0.5) * H * 0.06,
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: top + H * 0.05 }], H * 0.03, H * 0.022, FLORA.copper, iw);
+    paint(ctx, () => {
+      ctx.moveTo(x - rx, top);
+      ctx.ellipse(x, top, rx, rx * 0.62, 0, Math.PI, TAU, false);
+      ctx.closePath();
+    }, col(FLORA.teal), { ink: iw });
+    bead(ctx, x, top - rx * 0.55, H * 0.035, FLORA.lavender, iw);
+    tassels.forEach((t) => {
+      tube(ctx, [{ x: t.x, y: t.y0 }, { x: t.x + t.sway, y: t.y1 }], H * 0.012, H * 0.008, FLORA.copper, iw);
+      bead(ctx, t.x + t.sway, t.y1 + H * 0.01, H * 0.02, FLORA.magenta, iw);
+    });
+  }
+
+  function sporkFern(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const n = 3;
+    const sporks = [];
+    for (let i = 0; i < n; i++) {
+      const a = -2.4 + (i / (n - 1)) * 1.5;
+      const len = H * (0.55 + rand() * 0.2);
+      sporks.push({
+        x: x + Math.cos(a) * len,
+        y: y + Math.sin(a) * len * 0.85,
+        a,
+        len,
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.04, H * 0.1, H * 0.05, 0, 0, TAU), col(FLORA.lavender), { ink: iw });
+    sporks.forEach((sp) => {
+      const ux = Math.cos(sp.a);
+      const uy = Math.sin(sp.a);
+      const px = Math.cos(sp.a + Math.PI / 2);
+      const py = Math.sin(sp.a + Math.PI / 2);
+      const bowl = { x: sp.x - ux * H * 0.02, y: sp.y - uy * H * 0.02 };
+      tube(ctx, [{ x, y: y - H * 0.02 }, { x: bowl.x - ux * H * 0.1, y: bowl.y - uy * H * 0.1 }], H * 0.018, H * 0.026, FLORA.acid, iw);
+      paint(ctx, () => ctx.ellipse(bowl.x, bowl.y, H * 0.11, H * 0.07, sp.a, 0, TAU), col(FLORA.acid, 10), { ink: iw });
+      paint(ctx, () => ctx.ellipse(bowl.x - px * H * 0.02, bowl.y - py * H * 0.02, H * 0.05, H * 0.03, sp.a, 0, TAU), col(FLORA.lavender, 6), { ink: iw * 0.7 });
+      for (let k = -1; k <= 1; k++) {
+        const bx = bowl.x + ux * H * 0.07 + px * k * H * 0.035;
+        const by = bowl.y + uy * H * 0.07 + py * k * H * 0.035;
+        flare(ctx, bx, by, bx + ux * H * 0.09, by + uy * H * 0.09, H * 0.012, H * 0.008, FLORA.copper, iw);
+      }
+    });
+  }
+
+  function ringNest(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const n = 5;
+    const rings = [];
+    for (let i = 0; i < n; i++) {
+      rings.push({
+        y: y - H * (0.16 + i * 0.14),
+        rx: H * (0.2 - i * 0.02 + rand() * 0.01),
+        ry: H * (0.07 - i * 0.004),
+        tilt: (rand() - 0.5) * 0.3,
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.22, H * 0.045);
+    tube(ctx, [{ x, y }, { x, y: y - H * 0.2 }], H * 0.04, H * 0.03, FLORA.copper, iw);
+    rings.forEach((r, i) => {
+      paint(ctx, () => {
+        ctx.ellipse(x, r.y, r.rx, r.ry, r.tilt, 0, TAU, false);
+        ctx.ellipse(x, r.y, r.rx * 0.58, r.ry * 0.5, r.tilt, 0, TAU, true);
+      }, col(i % 2 ? FLORA.lavender : shade(FLORA.lavender, -6, 8)), { ink: iw });
+    });
+    const mid = rings[2];
+    bead(ctx, x, mid.y, H * 0.04, FLORA.magenta, iw);
+    bead(ctx, x, rings[n - 1].y - H * 0.06, H * 0.028, FLORA.acid, iw);
+  }
+
+  function trumpetChoir(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const horns = [];
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const a = -2.6 + (i / (n - 1)) * 2.2 + (rand() - 0.5) * 0.15;
+      const len = H * (0.42 + rand() * 0.22);
+      horns.push({
+        x: x + Math.cos(a) * len,
+        y: y - H * 0.2 + Math.sin(a) * len * 0.75,
+        a,
+      });
+    }
+    shadowBlob(ctx, x, y, H * 0.18, H * 0.045);
+    paint(ctx, () => ctx.arc(x, y - H * 0.16, H * 0.1, 0, TAU), col(FLORA.copper), { ink: iw });
+    paint(ctx, () => ctx.arc(x - H * 0.06, y - H * 0.08, H * 0.07, 0, TAU), col(FLORA.copper, -6), { ink: iw });
+    horns.forEach((horn) => {
+      const bx = x + Math.cos(horn.a) * H * 0.08;
+      const by = y - H * 0.16 + Math.sin(horn.a) * H * 0.06;
+      flare(ctx, bx, by, horn.x, horn.y, H * 0.018, H * 0.055, FLORA.magenta, iw);
+      paint(ctx, () => ctx.ellipse(horn.x, horn.y, H * 0.04, H * 0.055, horn.a, 0, TAU), col(FLORA.magenta, 8), { ink: iw });
+      bead(ctx, bx, by, H * 0.014, FLORA.teal, iw);
+    });
+  }
+
+  function jellyComb(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: y - H * 0.35 }], H * 0.04, H * 0.03, FLORA.copper, iw);
+    for (let row = 0; row < 3; row++) {
+      for (let cell = 0; cell < 3 - (row % 2); cell++) {
+        const cx = x + (cell - 1 + (row % 2) * 0.5) * H * 0.12;
+        const cy = y - H * (0.48 + row * 0.14);
+        paint(ctx, () => ctx.arc(cx, cy, H * 0.07, 0, TAU), col(row % 2 ? FLORA.acid : FLORA.magenta), { ink: iw });
+      }
+    }
+    void rand;
+  }
+
+  function corkHorn(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const tip = { x: x + H * 0.22, y: y - H * 0.78 };
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    flare(ctx, x, y - H * 0.08, tip.x, tip.y, H * 0.05, H * 0.02, FLORA.copper, iw);
+    bead(ctx, tip.x, tip.y, H * 0.05, FLORA.magenta, iw);
+    bead(ctx, x + H * 0.08, y - H * 0.4, H * 0.03, FLORA.acid, iw);
+    void rand;
+  }
+
+  function marbleReed(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    for (let i = 0; i < 4; i++) {
+      const lean = (i - 1.5) * H * 0.08;
+      tube(ctx, [{ x: x + lean * 0.2, y }, { x: x + lean, y: y - H * (0.55 + rand() * 0.25) }], H * 0.02, H * 0.012, FLORA.teal, iw);
+      bead(ctx, x + lean, y - H * (0.62 + i * 0.04), H * 0.035, i % 2 ? FLORA.lavender : FLORA.acid, iw);
+    }
+  }
+
+  function puffLadder(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, [{ x: x - H * 0.06, y }, { x: x - H * 0.06, y: y - H * 0.8 }], H * 0.02, H * 0.016, FLORA.copper, iw);
+    tube(ctx, [{ x: x + H * 0.06, y }, { x: x + H * 0.06, y: y - H * 0.8 }], H * 0.02, H * 0.016, FLORA.copper, iw);
+    for (let i = 0; i < 4; i++) {
+      const yy = y - H * (0.2 + i * 0.16);
+      paint(ctx, () => ctx.ellipse(x, yy, H * 0.1, H * 0.035, 0, 0, TAU), col(i % 2 ? FLORA.magenta : FLORA.lavender), { ink: iw });
+    }
+    void rand;
+  }
+
+  function sawBloom(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const cy = y - H * 0.55;
+    shadowBlob(ctx, x, y, H * 0.18, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: cy + H * 0.1 }], H * 0.03, H * 0.02, FLORA.teal, iw);
+    paint(ctx, () => {
+      ctx.moveTo(x, cy - H * 0.22);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU - Math.PI / 2;
+        const r = i % 2 ? H * 0.2 : H * 0.1;
+        ctx.lineTo(x + Math.cos(a) * r, cy + Math.sin(a) * r);
+      }
+      ctx.closePath();
+    }, col(FLORA.acid), { ink: iw });
+    bead(ctx, x, cy, H * 0.04, FLORA.magenta, iw);
+    void rand;
+  }
+
+  function cupStack(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    for (let i = 0; i < 3; i++) {
+      const yy = y - H * (0.2 + i * 0.22);
+      const rx = H * (0.16 - i * 0.03);
+      paint(ctx, () => ctx.ellipse(x, yy, rx, rx * 0.35, 0, 0, TAU), col(i % 2 ? FLORA.lavender : FLORA.teal), { ink: iw });
+    }
+    bead(ctx, x, y - H * 0.86, H * 0.04, FLORA.acid, iw);
+    void rand;
+  }
+
+  function ribbonKelp(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.04);
+    [-1, 0, 1].forEach((side, i) => {
+      const sway = side * H * (0.12 + rand() * 0.05);
+      tube(ctx, [
+        { x, y },
+        { x: x + sway, y: y - H * 0.4 },
+        { x: x - sway * 0.4, y: y - H * 0.75 },
+      ], H * 0.03, H * 0.015, i === 1 ? FLORA.magenta : FLORA.teal, iw);
+    });
+  }
+
+  function orbitPod(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const cy = y - H * 0.55;
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: cy }], H * 0.025, H * 0.02, FLORA.copper, iw);
+    paint(ctx, () => ctx.ellipse(x, cy, H * 0.16, H * 0.07, 0.2, 0, TAU), "rgba(0,0,0,0)", { ink: iw });
+    bead(ctx, x + H * 0.1, cy - H * 0.05, H * 0.045, FLORA.acid, iw);
+    bead(ctx, x - H * 0.08, cy + H * 0.02, H * 0.03, FLORA.magenta, iw);
+    void rand;
+  }
+
+  function clawFern(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.18, H * 0.04);
+    for (let i = 0; i < 5; i++) {
+      const a = -2.4 + i * 0.55;
+      const len = H * (0.35 + rand() * 0.15);
+      flare(ctx, x, y - H * 0.1, x + Math.cos(a) * len, y - H * 0.15 + Math.sin(a) * len * 0.8, H * 0.03, H * 0.012, FLORA.teal, iw);
+    }
+    bead(ctx, x, y - H * 0.12, H * 0.04, FLORA.copper, iw);
+  }
+
+  function drumVine(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + H * 0.05, y: y - H * 0.7 }], H * 0.02, H * 0.016, FLORA.lavender, iw);
+    [[0.25, 0.16], [0.48, -0.1], [0.7, 0.12]].forEach(([t, dx], i) => {
+      bead(ctx, x + dx * H, y - H * t, H * (0.05 - i * 0.008), i % 2 ? FLORA.magenta : FLORA.acid, iw);
+    });
+    void rand;
+  }
+
+  function petalGear(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const cy = y - H * 0.58;
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: cy + H * 0.12 }], H * 0.028, H * 0.02, FLORA.copper, iw);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      paint(ctx, () => ctx.ellipse(x + Math.cos(a) * H * 0.12, cy + Math.sin(a) * H * 0.12, H * 0.06, H * 0.035, a, 0, TAU), col(i % 2 ? FLORA.magenta : FLORA.lavender), { ink: iw });
+    }
+    bead(ctx, x, cy, H * 0.035, FLORA.acid, iw);
+    void rand;
+  }
+
+  function strawNest(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.22, H * 0.045);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.18, H * 0.22, H * 0.1, 0, 0, TAU), col(FLORA.copper), { ink: iw });
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * TAU;
+      stroke(ctx, () => {
+        ctx.moveTo(x + Math.cos(a) * H * 0.08, y - H * 0.2);
+        ctx.quadraticCurveTo(x + Math.cos(a) * H * 0.2, y - H * 0.35, x + Math.cos(a + 0.4) * H * 0.16, y - H * 0.42);
+      }, col(FLORA.lavender), iw);
+    }
+    bead(ctx, x, y - H * 0.28, H * 0.04, FLORA.acid, iw);
+    void rand;
+  }
+
+  function blobPalm(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const top = y - H * 0.62;
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + H * 0.04, y: top }], H * 0.04, H * 0.03, FLORA.copper, iw);
+    for (let i = 0; i < 5; i++) {
+      const a = -2.6 + i * 0.7;
+      paint(ctx, () => ctx.ellipse(top + Math.cos(a) * H * 0.16, top + Math.sin(a) * H * 0.1, H * 0.1, H * 0.05, a, 0, TAU), col(i % 2 ? FLORA.teal : FLORA.acid), { ink: iw });
+    }
+    void rand;
+  }
+
+  function zigTulip(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, [
+      { x, y },
+      { x: x - H * 0.08, y: y - H * 0.25 },
+      { x: x + H * 0.08, y: y - H * 0.5 },
+      { x, y: y - H * 0.72 },
+    ], H * 0.025, H * 0.016, FLORA.teal, iw);
+    paint(ctx, () => {
+      ctx.moveTo(x, y - H * 0.7);
+      ctx.quadraticCurveTo(x - H * 0.12, y - H * 0.95, x, y - H * 0.88);
+      ctx.quadraticCurveTo(x + H * 0.12, y - H * 0.95, x, y - H * 0.7);
+      ctx.closePath();
+    }, col(FLORA.magenta), { ink: iw });
+    void rand;
+  }
+
+  function moonFan(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const cy = y - H * 0.5;
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: cy }], H * 0.025, H * 0.02, FLORA.lavender, iw);
+    paint(ctx, () => ctx.arc(x, cy, H * 0.18, Math.PI, TAU), col(FLORA.acid), { ink: iw });
+    bead(ctx, x, cy, H * 0.03, FLORA.copper, iw);
+    void rand;
+  }
+
+  function pipeBouquet(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.18, H * 0.04);
+    for (let i = 0; i < 4; i++) {
+      const a = -2.2 + i * 0.5;
+      const ex = x + Math.cos(a) * H * 0.28;
+      const ey = y - H * 0.25 + Math.sin(a) * H * 0.35;
+      tube(ctx, [{ x, y }, { x: ex, y: ey }], H * 0.03, H * 0.045, i % 2 ? FLORA.magenta : FLORA.teal, iw);
+      bead(ctx, ex, ey - H * 0.04, H * 0.03, FLORA.acid, iw);
+    }
+    void rand;
+  }
+
+  function candySpine(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.1, H * 0.04);
+    tube(ctx, [{ x, y }, { x: x + (rand() - 0.5) * H * 0.08, y: y - H * 0.82 }], H * 0.03, H * 0.02, FLORA.lavender, iw);
+    for (let i = 0; i < 6; i++) {
+      const yy = y - H * (0.15 + i * 0.11);
+      const side = i % 2 ? 1 : -1;
+      paint(ctx, () => ctx.ellipse(x + side * H * 0.06, yy, H * 0.045, H * 0.025, side * 0.6, 0, TAU), col(i % 3 ? FLORA.magenta : FLORA.acid), { ink: iw * 0.8 });
+    }
+  }
+
+  function loopShrub(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.2, H * 0.04);
+    paint(ctx, () => ctx.ellipse(x, y - H * 0.28, H * 0.16, H * 0.2, 0, 0, TAU), col(FLORA.teal), { ink: iw });
+    paint(ctx, () => ctx.ellipse(x + H * 0.08, y - H * 0.42, H * 0.1, H * 0.12, 0.4, 0, TAU), col(FLORA.acid), { ink: iw });
+    paint(ctx, () => ctx.ellipse(x - H * 0.06, y - H * 0.48, H * 0.07, H * 0.09, -0.3, 0, TAU), col(FLORA.magenta), { ink: iw });
+    void rand;
+  }
+
+  function bellTower(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.12, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: y - H * 0.55 }], H * 0.035, H * 0.028, FLORA.copper, iw);
+    paint(ctx, () => {
+      ctx.moveTo(x - H * 0.1, y - H * 0.55);
+      ctx.quadraticCurveTo(x, y - H * 0.95, x + H * 0.1, y - H * 0.55);
+      ctx.closePath();
+    }, col(FLORA.lavender), { ink: iw });
+    bead(ctx, x, y - H * 0.62, H * 0.025, FLORA.acid, iw);
+    void rand;
+  }
+
+  function speckPod(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    const cy = y - H * 0.4;
+    shadowBlob(ctx, x, y, H * 0.16, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: cy + H * 0.12 }], H * 0.025, H * 0.02, FLORA.teal, iw);
+    paint(ctx, () => ctx.ellipse(x, cy, H * 0.14, H * 0.18, 0, 0, TAU), col(FLORA.magenta), { ink: iw });
+    for (let i = 0; i < 4; i++) bead(ctx, x + (rand() - 0.5) * H * 0.12, cy + (rand() - 0.4) * H * 0.16, H * 0.018, FLORA.acid, iw);
+  }
+
+  function curlCactus(ctx, x, y, s, h, rand, U) {
+    const H = h * s;
+    if (H < 4) return;
+    const iw = floraInk(U);
+    shadowBlob(ctx, x, y, H * 0.14, H * 0.04);
+    tube(ctx, [{ x, y }, { x, y: y - H * 0.45 }, { x: x + H * 0.16, y: y - H * 0.62 }], H * 0.05, H * 0.03, FLORA.acid, iw);
+    tube(ctx, [{ x, y: y - H * 0.28 }, { x: x - H * 0.18, y: y - H * 0.48 }], H * 0.035, H * 0.02, FLORA.teal, iw);
+    bead(ctx, x + H * 0.16, y - H * 0.66, H * 0.035, FLORA.magenta, iw);
+    void rand;
+  }
+
+  const EXOTIC_DRAW = {
+    copperFunnel,
+    acidLantern,
+    magentaBellows,
+    lavenderSpoon,
+    tealCorkscrew,
+    yolkUmbrella,
+    zipperVine,
+    bubbleChimney,
+    hornedPod,
+    tromboneBloom,
+    stackedHats,
+    waffleFan,
+    coilFountain,
+    mittenShrub,
+    dishBloom,
+    accordionKelp,
+    parasolSquid,
+    sporkFern,
+    ringNest,
+    trumpetChoir,
+    jellyComb,
+    corkHorn,
+    marbleReed,
+    puffLadder,
+    sawBloom,
+    cupStack,
+    ribbonKelp,
+    orbitPod,
+    clawFern,
+    drumVine,
+    petalGear,
+    strawNest,
+    blobPalm,
+    zigTulip,
+    moonFan,
+    pipeBouquet,
+    candySpine,
+    loopShrub,
+    bellTower,
+    speckPod,
+    curlCactus,
+  };
+
+  // Eight belts of 125 across world Y. Neighbors share one design; others do not.
+  const EXOTIC_BELTS = [
+    ["copperFunnel", "acidLantern", "magentaBellows", "lavenderSpoon", "tealCorkscrew", "jellyComb"],
+    ["jellyComb", "yolkUmbrella", "zipperVine", "bubbleChimney", "hornedPod", "corkHorn"],
+    ["corkHorn", "tromboneBloom", "stackedHats", "waffleFan", "coilFountain", "marbleReed"],
+    ["marbleReed", "mittenShrub", "dishBloom", "accordionKelp", "parasolSquid", "puffLadder"],
+    ["puffLadder", "sporkFern", "ringNest", "trumpetChoir", "sawBloom", "cupStack"],
+    ["cupStack", "ribbonKelp", "orbitPod", "clawFern", "drumVine", "petalGear"],
+    ["petalGear", "strawNest", "blobPalm", "zigTulip", "moonFan", "pipeBouquet"],
+    ["pipeBouquet", "candySpine", "loopShrub", "bellTower", "speckPod", "curlCactus"],
+  ];
+
+  function exoticBelt(y) {
+    const t = Math.max(0, Math.min(999.999, Number(y) || 0));
+    return Math.min(EXOTIC_BELTS.length - 1, Math.floor(t / 125));
+  }
+
+  function exoticFamily(y) {
+    return EXOTIC_BELTS[exoticBelt(y)];
+  }
+
+  function drawExotic(ctx, name, x, y, s, h, rand, U) {
+    const fn = EXOTIC_DRAW[name];
+    if (fn) fn(ctx, x, y, s, h, rand, U);
+  }
+
   G.ink = { INK, TAU, clamp, col, mixC, shade, inkW, paint, stroke, leafPath, blobUnion, quadPath };
   G.props = {
     bush,
@@ -2407,5 +3575,29 @@
     mailbox,
     glowCaps,
     skyJelly,
+    copperFunnel,
+    acidLantern,
+    magentaBellows,
+    lavenderSpoon,
+    tealCorkscrew,
+    yolkUmbrella,
+    zipperVine,
+    bubbleChimney,
+    hornedPod,
+    tromboneBloom,
+    stackedHats,
+    waffleFan,
+    coilFountain,
+    mittenShrub,
+    dishBloom,
+    accordionKelp,
+    parasolSquid,
+    sporkFern,
+    ringNest,
+    trumpetChoir,
+    drawExotic,
+    exoticBelt,
+    exoticFamily,
+    exoticBelts: EXOTIC_BELTS,
   };
 })(window.ProbeDrop = window.ProbeDrop || {});

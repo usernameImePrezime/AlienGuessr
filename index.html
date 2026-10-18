@@ -29,13 +29,6 @@
         <p class="lede">We beam you to a random road on a weird planet. Look around without moving, then guess where you are. Then we do it again. Forever.</p>
         <p id="diff-hint" class="quiet">One continent, eight countries, a thousand drops. A flag or a sign is close. The sky and the color of the locals give it away.</p>
 
-        <div class="planets" role="group" aria-label="Planet">
-          <button type="button" class="planet is-selected" data-planet="candy"><strong>World 1</strong></button>
-          <button type="button" class="planet" data-planet="suburb"><strong>World 2</strong></button>
-          <button type="button" class="planet" data-planet="dust"><strong>World 3</strong></button>
-          <button type="button" class="planet" data-planet="jelly"><strong>World 4</strong></button>
-        </div>
-
         <div class="difficulty" role="group" aria-label="Difficulty">
           <button type="button" class="diff is-selected" data-difficulty="easy"><strong>Easy</strong><small>1 continent · 8 countries · 1000 drops</small></button>
           <button type="button" class="diff" data-difficulty="medium"><strong>Medium</strong><small>2-3 continents · 24 countries · 5000 drops</small></button>
@@ -46,6 +39,13 @@
           <span>Planet seed</span>
           <input id="seed-input" type="text" autocomplete="off" spellcheck="false" placeholder="Leave empty for a fresh planet">
         </label>
+        <div class="saved-seeds">
+          <div class="saved-head">
+            <span>Saved planets</span>
+            <button type="button" id="save-seed" class="chip">Save this seed</button>
+          </div>
+          <div id="seed-list" class="seed-list"></div>
+        </div>
 
         <div class="action-row">
           <button type="button" id="play-btn" class="primary blob">Beam me down</button>
@@ -82,6 +82,7 @@
                 <input type="range" class="volume" min="0" max="100" step="1" aria-label="Music volume">
               </div>
               <button type="button" id="copy-seed" class="chip" title="Copy seed">Seed <strong id="seed-label"></strong></button>
+              <button type="button" id="keep-seed" class="chip" title="Save this planet">Save planet</button>
               <button type="button" id="back-btn" class="chip leave">Leave planet</button>
             </div>
           </header>

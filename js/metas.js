@@ -101,8 +101,8 @@
   ];
 
   const FEATURE_CHANCE = {
-    skyEvent: 0.34, stars: 0.3, building: 0.38, vegetation: 0.38, aliens: 0.4, fence: 0.3, banner: 0.32,
-    sign: 0.36, pole: 0.4, groundPattern: 0.3, weather: 0.3, landmark: 0.32,
+    skyEvent: 0.34, stars: 0.3, building: 0.38, vegetation: 0.38, aliens: 0.4, fence: 0.3, banner: 0.66,
+    sign: 0.68, pole: 0.7, groundPattern: 0.3, weather: 0.3, landmark: 0.32,
     bollard: 0.42, chevron: 0.34, guardrail: 0.3, kmMarker: 0.34, curb: 0.4, billboard: 0.42, plate: 0.36, probeCar: 0.45,
   };
 

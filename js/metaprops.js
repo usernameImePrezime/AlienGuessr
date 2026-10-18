@@ -504,7 +504,7 @@
       ctx.bezierCurveTo(cx + hw * 0.6, top, cx + hw * 1.05, top + H * 0.02, cx + hw * 1.2, H + 4);
       ctx.closePath();
     };
-    const body = { h: 262, s: 22, l: 80 };
+    const body = { h: 36, s: 42, l: 48 };
     const g = ctx.createLinearGradient(0, top, 0, H);
     g.addColorStop(0, col(body, 8));
     g.addColorStop(0.4, col(body, 0));
@@ -570,6 +570,10 @@
       paint(ctx, () => ctx.arc(ax - 4 * U, ay - 50 * U, 3.5 * U, 0, TAU), "rgba(255, 255, 255, 0.85)");
     }
     paint(ctx, () => ctx.roundRect(ax - 9 * U, ay - 4 * U, 18 * U, 9 * U, 3 * U), "#3a3248", { ink: iw * 0.7 });
+    stroke(ctx, () => {
+      ctx.moveTo(cx - hw * 0.7, top + H * 0.02);
+      ctx.lineTo(cx + hw * 0.7, top + H * 0.02);
+    }, "#39f3ff", Math.max(2, 2.4 * U));
   }
 
   // ---------- sun ----------
